@@ -1,0 +1,102 @@
+ "manifest_version": 3,
+  "name": "Multi-Agent Orchestrator Extension",
+  "short_name": "MAOE",
+  "version": "0.1.0",
+  "description": "Manifest V3 foundation for coordinating ChatGPT, Claude, Gemini, and Grok with GitHub under a one-task-one-PR workflow.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://grok.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service_worker.js"
+  },
+  "action": {
+    "default_title": "Multi-Agent Orchestrator Extension",
+    "default_popup": "popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "common/namespace.js",
+        "common/constants.js",
+        "common/logger.js",
+        "common/protocol.js",
+        "common/parsers/fenced_block_parser.js",
+        "common/parsers/ai_payload_parser.js",
+        "content/common/dom_utils.js",
+        "content/common/base_adapter.js",
+        "content/common/human_hub_bridge.js",
+        "content/chatgpt.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "common/namespace.js",
+        "common/constants.js",
+        "common/logger.js",
+        "common/protocol.js",
+        "common/parsers/fenced_block_parser.js",
+        "common/parsers/ai_payload_parser.js",
+        "content/common/dom_utils.js",
+        "content/common/base_adapter.js",
+        "content/common/human_hub_bridge.js",
+        "content/claude.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "common/namespace.js",
+        "common/constants.js",
+        "common/logger.js",
+        "common/protocol.js",
+        "common/parsers/fenced_block_parser.js",
+        "common/parsers/ai_payload_parser.js",
+        "content/common/dom_utils.js",
+        "content/common/base_adapter.js",
+        "content/common/human_hub_bridge.js",
+        "content/gemini.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://grok.com/*"
+      ],
+      "js": [
+        "common/namespace.js",
+        "common/constants.js",
+        "common/logger.js",
+        "common/protocol.js",
+        "common/parsers/fenced_block_parser.js",
+        "common/parsers/ai_payload_parser.js",
+        "content/common/dom_utils.js",
+        "content/common/base_adapter.js",
+        "content/common/human_hub_bridge.js",
+        "content/grok.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
