@@ -1,4 +1,5 @@
- "manifest_version": 3,
+{
+  "manifest_version": 3,
   "name": "Multi-Agent Orchestrator Extension",
   "short_name": "MAOE",
   "version": "0.1.0",
