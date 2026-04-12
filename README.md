@@ -1,5 +1,7 @@
 # PR-Forge
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+
 > **Note:** This is a personal experimental workspace. Pull requests and issues from outside are not accepted.
 > （注：これは個人的な実験用ワークスペースです。外部からのPRやIssueは受け付けていません。）
 
