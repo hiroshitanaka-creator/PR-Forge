@@ -1,0 +1,69 @@
+<SystemArchitecture>
+  <Tree>
+src/
+  manifest.json
+  common/
+    namespace.js
+    constants.js
+    logger.js
+    storage.js
+    protocol.js
+    parsers/
+      fenced_block_parser.js
+      ai_payload_parser.js
+  prompts/
+    executor_prompt.js
+    auditor_prompt.js
+  background/
+    github_api.js
+    github_issue_service.js
+    github_repo_service.js
+    github_pr_service.js
+    state_store.js
+    orchestrator.js
+    service_worker.js
+  popup/
+    popup.html
+    popup.css
+    popup.js
+  content/
+    common/
+      dom_utils.js
+      base_adapter.js
+      human_hub_bridge.js
+    chatgpt.js
+    claude.js
+    gemini.js
+    grok.js
+  </Tree>
+  <TaskList>
+    <Task id="T001" file="src/manifest.json" deps="none">拡張機能のMV3基盤設定、権限、各実行コンテキストの配線</Task>
+    <Task id="T002" file="src/common/namespace.js" deps="T001">共有名前空間MAOEの初期化</Task>
+    <Task id="T003" file="src/common/constants.js" deps="T002">定数、列挙値、サイト定義、ストレージキー定義</Task>
+    <Task id="T004" file="src/common/logger.js" deps="T002,T003">構造化ロガーと機密値マスキング</Task>
+    <Task id="T005" file="src/common/storage.js" deps="T002,T003,T004">chrome.storageラッパーと設定永続化</Task>
+    <Task id="T006" file="src/common/protocol.js" deps="T002,T003,T004">メッセージ契約、状態契約、手動受け渡し用スキーマ</Task>
+    <Task id="T007" file="src/common/parsers/fenced_block_parser.js" deps="T002,T003,T004,T006">xml/json/diffフェンスブロック抽出器</Task>
+    <Task id="T008" file="src/common/parsers/ai_payload_parser.js" deps="T002,T003,T004,T006,T007">AI出力の厳密パーサー単一File強制と破損出力拒否</Task>
+    <Task id="T009" file="src/prompts/executor_prompt.js" deps="T002,T003,T006">実行担当AI向けコード修正プロンプトテンプレート</Task>
+    <Task id="T010" file="src/prompts/auditor_prompt.js" deps="T002,T003,T006">監査担当AI向けAPPROVE/REJECTプロンプトテンプレート</Task>
+    <Task id="T011" file="src/background/github_api.js" deps="T002,T003,T004,T005,T006">GitHub RESTクライアントPAT認証失敗正規化レート制限考慮</Task>
+    <Task id="T012" file="src/background/github_issue_service.js" deps="T011,T006">Issue一覧詳細の取得と正規化</Task>
+    <Task id="T013" file="src/background/github_repo_service.js" deps="T011,T006">リポジトリツリー取得と平坦化</Task>
+    <Task id="T014" file="src/background/github_pr_service.js" deps="T011,T006">Pull Request作成要求の組み立てと送信</Task>
+    <Task id="T015" file="src/background/state_store.js" deps="T002,T003,T004,T005,T006">ワークフロー状態担当AI選択Issueの永続化</Task>
+    <Task id="T016" file="src/background/orchestrator.js" deps="T003,T004,T006,T008,T009,T010,T012,T013,T014,T015">Issueから設計実行監査PRまでの状態遷移制御</Task>
+    <Task id="T017" file="src/background/service_worker.js" deps="T002,T003,T004,T005,T006,T007,T008,T009,T010,T011,T012,T013,T014,T015,T016">Background Service WorkerのブートストラップとメッセージAPI</Task>
+    <Task id="T018" file="src/popup/popup.html" deps="T001">ポップアップ画面のDOM骨格</Task>
+    <Task id="T019" file="src/popup/popup.css" deps="T018">ポップアップ画面のスタイル</Task>
+    <Task id="T020" file="src/popup/popup.js" deps="T002,T003,T004,T005,T006,T008,T017,T018,T019">ポップアップ制御PATとRepo設定Issue表示進行表示貼り付け検証</Task>
+    <Task id="T021" file="src/content/common/dom_utils.js" deps="T002,T003,T004">共通DOM探索待機入力イベント発火ユーティリティ</Task>
+    <Task id="T022" file="src/content/common/base_adapter.js" deps="T002,T003,T004,T006,T007,T008,T021">AI Web UIアダプタ基底インターフェース</Task>
+    <Task id="T023" file="src/content/common/human_hub_bridge.js" deps="T002,T003,T004,T006,T017,T022">人間ハブ運用ブリッジコピー用パケット生成抽出結果送信</Task>
+    <Task id="T024" file="src/content/chatgpt.js" deps="T002,T003,T004,T006,T007,T008,T021,T022,T023">ChatGPT連携土台</Task>
+    <Task id="T025" file="src/content/claude.js" deps="T002,T003,T004,T006,T007,T008,T021,T022,T023">Claude連携土台</Task>
+    <Task id="T026" file="src/content/gemini.js" deps="T002,T003,T004,T006,T007,T008,T021,T022,T023">Gemini連携土台</Task>
+    <Task id="T027" file="src/content/grok.js" deps="T002,T003,T004,T006,T007,T008,T021,T022,T023">Grok連携土台</Task>
+  </TaskList>
+</SystemArchitecture>
+[SYSTEM_READY] ユーザーの `[EXECUTE: Task_ID]` トリガーを待機中...
