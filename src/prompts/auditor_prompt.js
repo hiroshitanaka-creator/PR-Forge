@@ -1,6 +1,7 @@
 (function registerMAOEAuditorPrompt(globalScope) {
   'use strict';
 
+
 const root = globalScope.MAOE;
 
 if (!root || typeof root.registerValue !== 'function') {
