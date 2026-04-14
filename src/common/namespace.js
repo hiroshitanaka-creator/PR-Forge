@@ -1,6 +1,4 @@
-(function initializeMAOENamespace(globalScope) {
-  'use strict';
-
+(function initNamespace(globalScope) {
   const NAMESPACE_NAME = 'MAOE';
   const EXTENSION_NAME = 'Multi-Agent Orchestrator Extension';
   const EXTENSION_SHORT_NAME = 'MAOE';
@@ -220,19 +218,23 @@
       return JSON.stringify(value, null, indentation);
     } catch (error) {
       const message = error && error.message ? error.message : String(error);
-      return JSON.stringify({
-        error: 'JSON_SERIALIZATION_FAILED',
-        message: message
-      }, null, indentation);
+      return JSON.stringify(
+        {
+          error: 'JSON_SERIALIZATION_FAILED',
+          message: message
+        },
+        null,
+        indentation
+      );
     }
   }
 
   function detectRuntimeContext(scope) {
-    const hasChromeRuntime = typeof chrome !== 'undefined'
-      && !!chrome.runtime
-      && typeof chrome.runtime.id === 'string'
-      && chrome.runtime.id.length > 0;
-
+    const hasChromeRuntime =
+      typeof chrome !== 'undefined' &&
+      !!chrome.runtime &&
+      typeof chrome.runtime.id === 'string' &&
+      chrome.runtime.id.length > 0;
     const hasWindow = typeof window !== 'undefined' && scope === window;
     const hasDocument = typeof document !== 'undefined' && !!document;
     const hasImportScripts = typeof scope.importScripts === 'function';
@@ -299,9 +301,10 @@
   const registry = isObjectLike(root.registry) && !Array.isArray(root.registry) ? root.registry : Object.create(null);
   const state = isObjectLike(root.state) && !Array.isArray(root.state) ? root.state : Object.create(null);
 
-  const initializedAt = isPlainObject(root.meta) && typeof root.meta.initializedAt === 'string'
-    ? root.meta.initializedAt
-    : isoNow();
+  const initializedAt =
+    isPlainObject(root.meta) && typeof root.meta.initializedAt === 'string'
+      ? root.meta.initializedAt
+      : isoNow();
 
   const meta = deepFreeze({
     namespace: NAMESPACE_NAME,
@@ -315,9 +318,10 @@
   const diagnostics = deepFreeze({
     initializedAt: initializedAt,
     lastLoadedAt: isoNow(),
-    loadCount: isPlainObject(root.diagnostics) && Number.isFinite(root.diagnostics.loadCount)
-      ? root.diagnostics.loadCount + 1
-      : 1,
+    loadCount:
+      isPlainObject(root.diagnostics) && Number.isFinite(root.diagnostics.loadCount)
+        ? root.diagnostics.loadCount + 1
+        : 1,
     context: detectRuntimeContext(globalScope)
   });
 
@@ -431,9 +435,7 @@
     const normalizedKey = normalizeKey(key, 'state key');
 
     if (!hasOwn(state, normalizedKey)) {
-      state[normalizedKey] = typeof initializer === 'function'
-        ? initializer()
-        : initializer;
+      state[normalizedKey] = typeof initializer === 'function' ? initializer() : initializer;
     }
 
     return state[normalizedKey];
@@ -446,9 +448,10 @@
       throw new TypeError('[MAOE] State patch must be a plain object.');
     }
 
-    const currentValue = hasOwn(state, normalizedKey) && isPlainObject(state[normalizedKey])
-      ? state[normalizedKey]
-      : Object.create(null);
+    const currentValue =
+      hasOwn(state, normalizedKey) && isPlainObject(state[normalizedKey])
+        ? state[normalizedKey]
+        : Object.create(null);
 
     state[normalizedKey] = Object.assign(
       Object.create(null),
@@ -511,7 +514,6 @@
   root.state = state;
   root.diagnostics = diagnostics;
   root.util = util;
-
   root.assert = assert;
   root.has = has;
   root.get = get;
@@ -520,7 +522,6 @@
   root.registerValue = registerValue;
   root.defineModule = defineModule;
   root.remove = remove;
-
   root.hasState = hasState;
   root.getState = getState;
   root.setState = setState;
@@ -528,7 +529,6 @@
   root.mergeState = mergeState;
   root.deleteState = deleteState;
   root.clearState = clearState;
-
   root.snapshot = snapshot;
 
   Object.defineProperty(root, '__initialized', {
@@ -555,8 +555,10 @@
   } catch (error) {
     globalScope[NAMESPACE_NAME] = root;
   }
-}(typeof globalThis !== 'undefined'
-  ? globalThis
-  : (typeof self !== 'undefined'
-    ? self
-    : (typeof window !== 'undefined' ? window : this))));
+})(
+  typeof globalThis !== 'undefined'
+    ? globalThis
+    : (typeof self !== 'undefined'
+        ? self
+        : (typeof window !== 'undefined' ? window : this))
+);
