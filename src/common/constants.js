@@ -1,6 +1,4 @@
-(function registerMAOEConstants(globalScope) {
-  'use strict';
-
+(function (globalScope) {
   const root = globalScope.MAOE;
 
   if (!root || typeof root.registerValue !== 'function') {
@@ -68,7 +66,6 @@
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase();
-
     const slug = normalized
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
@@ -711,7 +708,7 @@
     SENSITIVE_VALUE_PATTERNS: [
       /gh[pousr][A-Za-z0-9]+/g,
       /github_pat_[A-Za-z0-9_]+/g,
-      /Bearer\s+[A-Za-z0-9._-+/=]+/gi
+      /Bearer\s+[A-Za-z0-9._\-+/=]+/gi
     ]
   };
 
@@ -816,11 +813,9 @@
   };
 
   const providerIds = Object.keys(PROVIDERS);
-
   const siteIds = SITES.map(function mapSiteId(site) {
     return site.id;
   });
-
   const siteById = Object.create(null);
   const siteByHost = Object.create(null);
   const providerByHost = Object.create(null);
@@ -944,8 +939,10 @@
     freeze: false,
     clone: false
   });
-}(typeof globalThis !== 'undefined'
-  ? globalThis
-  : (typeof self !== 'undefined'
-      ? self
-      : (typeof window !== 'undefined' ? window : this))));
+})(
+  typeof globalThis !== 'undefined'
+    ? globalThis
+    : (typeof self !== 'undefined'
+        ? self
+        : (typeof window !== 'undefined' ? window : this))
+);
