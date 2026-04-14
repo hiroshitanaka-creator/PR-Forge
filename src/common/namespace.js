@@ -1,4 +1,6 @@
-(function initNamespace(globalScope) {
+(function initializeMAOENamespace(globalScope) {
+  'use strict';
+
   const NAMESPACE_NAME = 'MAOE';
   const EXTENSION_NAME = 'Multi-Agent Orchestrator Extension';
   const EXTENSION_SHORT_NAME = 'MAOE';
@@ -235,6 +237,7 @@
       !!chrome.runtime &&
       typeof chrome.runtime.id === 'string' &&
       chrome.runtime.id.length > 0;
+
     const hasWindow = typeof window !== 'undefined' && scope === window;
     const hasDocument = typeof document !== 'undefined' && !!document;
     const hasImportScripts = typeof scope.importScripts === 'function';
@@ -435,7 +438,9 @@
     const normalizedKey = normalizeKey(key, 'state key');
 
     if (!hasOwn(state, normalizedKey)) {
-      state[normalizedKey] = typeof initializer === 'function' ? initializer() : initializer;
+      state[normalizedKey] = typeof initializer === 'function'
+        ? initializer()
+        : initializer;
     }
 
     return state[normalizedKey];
@@ -448,10 +453,9 @@
       throw new TypeError('[MAOE] State patch must be a plain object.');
     }
 
-    const currentValue =
-      hasOwn(state, normalizedKey) && isPlainObject(state[normalizedKey])
-        ? state[normalizedKey]
-        : Object.create(null);
+    const currentValue = hasOwn(state, normalizedKey) && isPlainObject(state[normalizedKey])
+      ? state[normalizedKey]
+      : Object.create(null);
 
     state[normalizedKey] = Object.assign(
       Object.create(null),
@@ -514,6 +518,7 @@
   root.state = state;
   root.diagnostics = diagnostics;
   root.util = util;
+
   root.assert = assert;
   root.has = has;
   root.get = get;
@@ -522,6 +527,7 @@
   root.registerValue = registerValue;
   root.defineModule = defineModule;
   root.remove = remove;
+
   root.hasState = hasState;
   root.getState = getState;
   root.setState = setState;
@@ -529,6 +535,7 @@
   root.mergeState = mergeState;
   root.deleteState = deleteState;
   root.clearState = clearState;
+
   root.snapshot = snapshot;
 
   Object.defineProperty(root, '__initialized', {
@@ -555,10 +562,10 @@
   } catch (error) {
     globalScope[NAMESPACE_NAME] = root;
   }
-})(
+}(
   typeof globalThis !== 'undefined'
     ? globalThis
     : (typeof self !== 'undefined'
-        ? self
-        : (typeof window !== 'undefined' ? window : this))
-);
+      ? self
+      : (typeof window !== 'undefined' ? window : this))
+));
