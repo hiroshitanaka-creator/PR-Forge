@@ -1,6 +1,4 @@
-(function registerMAOELogger(globalScope) {
-  'use strict';
-
+(function (globalScope) {
   const root = globalScope.MAOE;
 
   if (!root || typeof root.registerValue !== 'function') {
@@ -77,9 +75,11 @@
     : '[REDACTED]';
 
   const SENSITIVE_KEYS = Array.isArray(LOGGING.SENSITIVE_KEYS)
-    ? LOGGING.SENSITIVE_KEYS.map(function mapKey(key) {
-        return typeof key === 'string' ? key.toLowerCase() : '';
-      }).filter(Boolean)
+    ? LOGGING.SENSITIVE_KEYS
+        .map(function mapKey(key) {
+          return typeof key === 'string' ? key.toLowerCase() : '';
+        })
+        .filter(Boolean)
     : [];
 
   const SENSITIVE_VALUE_PATTERNS = Array.isArray(LOGGING.SENSITIVE_VALUE_PATTERNS)
@@ -212,7 +212,8 @@
     for (const pattern of SENSITIVE_VALUE_PATTERNS) {
       try {
         result = result.replace(pattern, REDACTION_TEXT);
-      } catch (error) {}
+      } catch (error) {
+      }
     }
 
     return clampString(result, MAX_STRING_LENGTH);
@@ -387,11 +388,13 @@
       return value;
     }
 
-    if (typeof value === 'string'
-      || typeof value === 'number'
-      || typeof value === 'boolean'
-      || typeof value === 'bigint'
-      || typeof value === 'symbol') {
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint' ||
+      typeof value === 'symbol'
+    ) {
       return sanitizePrimitive(value);
     }
 
@@ -545,7 +548,8 @@
     } catch (error) {
       try {
         console.log(prefix);
-      } catch (consoleError) {}
+      } catch (consoleError) {
+      }
     }
   }
 
@@ -572,7 +576,8 @@
 
       try {
         listenerRecord.callback(cloneEntry(entry));
-      } catch (error) {}
+      } catch (error) {
+      }
     }
   }
 
@@ -703,9 +708,13 @@
   }
 
   function getLastEntry(options) {
-    const entries = getEntries(Object.assign(Object.create(null), isPlainObject(options) ? options : Object.create(null), {
-      limit: 1
-    }));
+    const entries = getEntries(
+      Object.assign(
+        Object.create(null),
+        isPlainObject(options) ? options : Object.create(null),
+        { limit: 1 }
+      )
+    );
 
     return entries.length > 0 ? entries[0] : null;
   }
@@ -833,9 +842,14 @@
         return findScopeEntries(normalizedScope, options);
       },
       getLastEntry: function scopedGetLastEntry(options) {
-        const entries = findScopeEntries(normalizedScope, Object.assign(Object.create(null), isPlainObject(options) ? options : Object.create(null), {
-          limit: 1
-        }));
+        const entries = findScopeEntries(
+          normalizedScope,
+          Object.assign(
+            Object.create(null),
+            isPlainObject(options) ? options : Object.create(null),
+            { limit: 1 }
+          )
+        );
         return entries.length > 0 ? entries[0] : null;
       },
       flushToStorage: flushToStorage
@@ -913,46 +927,66 @@
         return;
       }
 
-      logError('global', event.error, {
-        source: 'window.error',
-        filename: event.filename || '',
-        lineno: typeof event.lineno === 'number' ? event.lineno : null,
-        colno: typeof event.colno === 'number' ? event.colno : null
-      }, {
-        code: ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR'
-      });
+      logError(
+        'global',
+        event.error,
+        {
+          source: 'window.error',
+          filename: event.filename || '',
+          lineno: typeof event.lineno === 'number' ? event.lineno : null,
+          colno: typeof event.colno === 'number' ? event.colno : null
+        },
+        {
+          code: ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR'
+        }
+      );
     });
-  } catch (error) {}
+  } catch (error) {
+  }
 
   try {
     globalScope.addEventListener('unhandledrejection', function onUnhandledRejection(event) {
       const reason = event ? event.reason : null;
 
       if (reason instanceof Error) {
-        logError('global', reason, {
-          source: 'window.unhandledrejection'
-        }, {
-          code: ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR'
-        });
+        logError(
+          'global',
+          reason,
+          {
+            source: 'window.unhandledrejection'
+          },
+          {
+            code: ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR'
+          }
+        );
         return;
       }
 
-      log(LEVELS.ERROR, 'global', '[Unhandled rejection]', {
-        source: 'window.unhandledrejection',
-        reason: sanitizeValue(reason, new WeakSet(), 0, 'reason')
-      }, {
-        code: ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR'
-      });
+      log(
+        LEVELS.ERROR,
+        'global',
+        '[Unhandled rejection]',
+        {
+          source: 'window.unhandledrejection',
+          reason: sanitizeValue(reason, new WeakSet(), 0, 'reason')
+        },
+        {
+          code: ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR'
+        }
+      );
     });
-  } catch (error) {}
+  } catch (error) {
+  }
 
   root.registerValue('logger', deepFreeze(api), {
     overwrite: false,
     freeze: false,
     clone: false
   });
-}(typeof globalThis !== 'undefined'
-  ? globalThis
-  : (typeof self !== 'undefined'
-    ? self
-    : (typeof window !== 'undefined' ? window : this))));
+})(
+  typeof globalThis !== 'undefined'
+    ? globalThis
+    : (typeof self !== 'undefined'
+        ? self
+        : (typeof window !== 'undefined' ? window : this))
+);
