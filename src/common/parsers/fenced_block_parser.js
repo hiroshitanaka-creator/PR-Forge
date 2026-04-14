@@ -1,4 +1,3 @@
-```javascript
 (function registerMAOEFencedBlockParser(globalScope) {
   'use strict';
 
@@ -202,8 +201,8 @@
 
     const cleaned = raw
       .replace(/^language-/, '')
-      .replace(/^[\[{(]+/, '')
-      .replace(/[\]})]+$/, '');
+      .replace(/^[$begin:math:display$\{\(\]\+\/\, \'\'\)
+      \.replace\(\/\[$end:math:display$})]+$/, '');
 
     if (cleaned === 'txt') {
       return 'text';
@@ -939,5 +938,3 @@
   : (typeof self !== 'undefined'
     ? self
     : (typeof window !== 'undefined' ? window : this))));
-
-```
