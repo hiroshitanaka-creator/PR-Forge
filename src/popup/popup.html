@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR-Forge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body data-default-tab="dashboard">
+  <div class="app-shell" id="app-shell">
+    <header class="app-header">
+      <div class="brand-block">
+        <h1 class="app-title" id="app-title">PR-Forge</h1>
+        <p class="app-subtitle" id="app-subtitle">Multi-Agent Orchestrator Extension</p>
+      </div>
+      <div class="header-actions">
+        <button id="refresh-bootstrap-button" class="button button-secondary" type="button" title="Refresh all state">Refresh</button>
+      </div>
+    </header>
+
+    <div id="global-status-banner" class="status-banner" role="status" aria-live="polite">
+      <span id="global-status-text">Loading extension state...</span>
+    </div>
+
+    <div id="global-error-banner" class="error-banner" role="alert" hidden>
+      <div class="error-banner-content">
+        <strong id="global-error-code">ERROR</strong>
+        <span id="global-error-text">Unknown error.</span>
+      </div>
+      <button id="dismiss-global-error-button" class="button button-secondary" type="button">Dismiss</button>
+    </div>
+
+    <nav class="tab-nav" aria-label="Primary tabs">
+      <button id="tab-dashboard-button" class="tab-button is-active" type="button" data-tab="dashboard" aria-controls="panel-dashboard" aria-selected="true">Dashboard</button>
+      <button id="tab-settings-button" class="tab-button" type="button" data-tab="settings" aria-controls="panel-settings" aria-selected="false">Settings</button>
+      <button id="tab-manual-hub-button" class="tab-button" type="button" data-tab="manual_hub" aria-controls="panel-manual_hub" aria-selected="false">Manual Hub</button>
+    </nav>
+
+    <main class="tab-panels" id="tab-panels">
+      <section id="panel-dashboard" class="tab-panel is-active" data-tab-panel="dashboard" role="tabpanel" aria-labelledby="tab-dashboard-button">
+        <div class="panel-stack">
+          <section class="card workflow-overview-card" id="workflow-overview-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Workflow</h2>
+                <p class="card-subtitle">Current task, stage, provider routing, and completion state.</p>
+              </div>
+              <div class="card-actions">
+                <button id="refresh-workflow-button" class="button button-secondary" type="button">Refresh</button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="stats-grid" id="workflow-stats-grid">
+                <div class="stat-card">
+                  <span class="stat-label">Stage</span>
+                  <strong id="workflow-stage-value" class="stat-value">-</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Status</span>
+                  <strong id="workflow-status-value" class="stat-value">-</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Active Provider</span>
+                  <strong id="workflow-active-provider-value" class="stat-value">-</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Target File</span>
+                  <strong id="workflow-target-file-value" class="stat-value">-</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Working Branch</span>
+                  <strong id="workflow-working-branch-value" class="stat-value">-</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Pull Request</span>
+                  <strong id="workflow-pull-request-value" class="stat-value">-</strong>
+                </div>
+              </div>
+
+              <div class="stage-pipeline" id="workflow-stage-pipeline" aria-label="Workflow stage pipeline">
+                <button id="stage-chip-idle" class="stage-chip" type="button" data-stage="idle">Idle</button>
+                <button id="stage-chip-design" class="stage-chip" type="button" data-stage="design">Design</button>
+                <button id="stage-chip-execution" class="stage-chip" type="button" data-stage="execution">Execution</button>
+                <button id="stage-chip-audit" class="stage-chip" type="button" data-stage="audit">Audit</button>
+                <button id="stage-chip-pr" class="stage-chip" type="button" data-stage="pr">PR</button>
+                <button id="stage-chip-completed" class="stage-chip" type="button" data-stage="completed">Completed</button>
+                <button id="stage-chip-error" class="stage-chip" type="button" data-stage="error">Error</button>
+              </div>
+
+              <div class="summary-grid two-column">
+                <div class="summary-block">
+                  <h3 class="summary-title">Selected Providers</h3>
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Designer</dt>
+                      <dd id="workflow-designer-provider-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Executor</dt>
+                      <dd id="workflow-executor-provider-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Auditor</dt>
+                      <dd id="workflow-auditor-provider-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Last Transition</dt>
+                      <dd id="workflow-last-transition-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Last Human Action</dt>
+                      <dd id="workflow-last-human-action-value">-</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div class="summary-block">
+                  <h3 class="summary-title">Current Issue</h3>
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Issue</dt>
+                      <dd id="workflow-current-issue-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Issue URL</dt>
+                      <dd><a id="workflow-current-issue-link" href="#" target="_blank" rel="noreferrer noopener">Open</a></dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Audit Verdict</dt>
+                      <dd id="workflow-audit-verdict-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Audit Summary</dt>
+                      <dd id="workflow-audit-summary-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Error Code</dt>
+                      <dd id="workflow-error-code-value">-</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+
+              <div class="action-row">
+                <button id="build-current-artifact-button" class="button button-primary" type="button">Build Current Artifact</button>
+                <button id="advance-stage-button" class="button button-secondary" type="button">Advance Stage</button>
+                <button id="create-pull-request-button" class="button button-secondary" type="button">Create PR</button>
+                <button id="reset-workflow-button" class="button button-danger" type="button">Reset Workflow</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="card repository-summary-card" id="repository-summary-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Repository</h2>
+                <p class="card-subtitle">Current GitHub target and repository tree context.</p>
+              </div>
+              <div class="card-actions">
+                <button id="load-repo-tree-button" class="button button-secondary" type="button">Load Tree</button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="summary-grid two-column">
+                <div class="summary-block">
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Owner</dt>
+                      <dd id="repository-owner-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Repo</dt>
+                      <dd id="repository-repo-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Full Name</dt>
+                      <dd id="repository-full-name-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Base Branch</dt>
+                      <dd id="repository-base-branch-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Default Branch</dt>
+                      <dd id="repository-default-branch-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Repository Link</dt>
+                      <dd><a id="repository-link" href="#" target="_blank" rel="noreferrer noopener">Open</a></dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div class="summary-block">
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Tree Branch</dt>
+                      <dd id="repository-tree-branch-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Tree SHA</dt>
+                      <dd id="repository-tree-sha-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Returned Entries</dt>
+                      <dd id="repository-tree-entry-count-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Tree Partial</dt>
+                      <dd id="repository-tree-partial-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Last Loaded</dt>
+                      <dd id="repository-tree-loaded-at-value">-</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+
+              <div class="field-row">
+                <label class="field">
+                  <span class="field-label">Path Prefix</span>
+                  <input id="tree-path-prefix-input" class="text-input" type="text" placeholder="src/background" spellcheck="false" autocomplete="off">
+                </label>
+              </div>
+
+              <label class="field" for="repository-tree-textarea">
+                <span class="field-label">Repository Tree</span>
+                <textarea id="repository-tree-textarea" class="code-textarea" rows="12" readonly>No repository tree loaded.</textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="card issue-selection-card" id="issue-selection-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Issue Selection</h2>
+                <p class="card-subtitle">Load issues, filter them, and bind one issue to the workflow.</p>
+              </div>
+              <div class="card-actions">
+                <button id="load-issues-button" class="button button-primary" type="button">Load Issues</button>
+                <button id="refresh-issues-button" class="button button-secondary" type="button">Refresh</button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="fields-grid fields-grid-compact">
+                <label class="field" for="issue-state-select">
+                  <span class="field-label">State</span>
+                  <select id="issue-state-select" class="select-input">
+                    <option value="open">open</option>
+                    <option value="closed">closed</option>
+                    <option value="all">all</option>
+                  </select>
+                </label>
+
+                <label class="field" for="issue-sort-select">
+                  <span class="field-label">Sort</span>
+                  <select id="issue-sort-select" class="select-input">
+                    <option value="updated">updated</option>
+                    <option value="created">created</option>
+                    <option value="comments">comments</option>
+                  </select>
+                </label>
+
+                <label class="field" for="issue-direction-select">
+                  <span class="field-label">Direction</span>
+                  <select id="issue-direction-select" class="select-input">
+                    <option value="desc">desc</option>
+                    <option value="asc">asc</option>
+                  </select>
+                </label>
+
+                <label class="field field-expand" for="issue-filter-input">
+                  <span class="field-label">Filter</span>
+                  <input id="issue-filter-input" class="text-input" type="text" placeholder="Search title, body, labels..." spellcheck="false" autocomplete="off">
+                </label>
+              </div>
+
+              <div class="toolbar-row">
+                <span id="issues-count-label" class="toolbar-label">0 issues</span>
+                <label class="checkbox-label" for="issues-include-pulls-checkbox">
+                  <input id="issues-include-pulls-checkbox" type="checkbox">
+                  <span>Include pull requests</span>
+                </label>
+              </div>
+
+              <div class="table-shell">
+                <table id="issues-table" class="data-table">
+                  <thead>
+                    <tr>
+                      <th class="cell-select">Use</th>
+                      <th class="cell-number">#</th>
+                      <th class="cell-title">Title</th>
+                      <th class="cell-state">State</th>
+                      <th class="cell-updated">Updated</th>
+                      <th class="cell-labels">Labels</th>
+                    </tr>
+                  </thead>
+                  <tbody id="issues-table-body">
+                    <tr class="placeholder-row">
+                      <td colspan="6">No issues loaded.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="summary-grid two-column">
+                <section class="summary-block selected-issue-summary">
+                  <h3 class="summary-title">Selected Issue</h3>
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Issue</dt>
+                      <dd id="selected-issue-header-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>State</dt>
+                      <dd id="selected-issue-state-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Labels</dt>
+                      <dd id="selected-issue-labels-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>URL</dt>
+                      <dd><a id="selected-issue-link" href="#" target="_blank" rel="noreferrer noopener">Open</a></dd>
+                    </div>
+                  </dl>
+
+                  <label class="field" for="selected-target-file-input">
+                    <span class="field-label">Target File</span>
+                    <input id="selected-target-file-input" class="text-input" type="text" placeholder="src/background/example.js" spellcheck="false" autocomplete="off">
+                  </label>
+
+                  <div class="action-row">
+                    <button id="select-issue-button" class="button button-primary" type="button">Apply Selection</button>
+                    <button id="build-design-artifact-button" class="button button-secondary" type="button">Build Design Artifact</button>
+                  </div>
+                </section>
+
+                <label class="field selected-issue-body-field" for="selected-issue-body-textarea">
+                  <span class="field-label">Issue Body</span>
+                  <textarea id="selected-issue-body-textarea" class="code-textarea" rows="10" readonly>No issue selected.</textarea>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="card stage-artifact-card" id="stage-artifact-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Stage Artifact</h2>
+                <p class="card-subtitle">Generated prompt and packet for the current workflow stage.</p>
+              </div>
+              <div class="card-actions">
+                <button id="probe-active-tab-button" class="button button-secondary" type="button">Probe Active Tab</button>
+                <button id="send-prompt-to-active-tab-button" class="button button-secondary" type="button">Send Prompt</button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="summary-grid two-column">
+                <div class="summary-block">
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Artifact Kind</dt>
+                      <dd id="stage-artifact-kind-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Stage</dt>
+                      <dd id="stage-artifact-stage-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Provider</dt>
+                      <dd id="stage-artifact-provider-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Target File</dt>
+                      <dd id="stage-artifact-target-file-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Valid</dt>
+                      <dd id="stage-artifact-valid-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Warnings</dt>
+                      <dd id="stage-artifact-warning-count-value">-</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div class="summary-block">
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Prompt Length</dt>
+                      <dd id="stage-artifact-prompt-length-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Packet Length</dt>
+                      <dd id="stage-artifact-packet-length-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Issue</dt>
+                      <dd id="stage-artifact-issue-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Repository</dt>
+                      <dd id="stage-artifact-repository-value">-</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+
+              <label class="field" for="stage-artifact-prompt-textarea">
+                <span class="field-label">Prompt</span>
+                <textarea id="stage-artifact-prompt-textarea" class="code-textarea" rows="12" readonly>No stage artifact generated yet.</textarea>
+              </label>
+
+              <div class="action-row">
+                <button id="copy-stage-artifact-prompt-button" class="button button-secondary" type="button">Copy Prompt</button>
+                <button id="build-manual-packet-from-artifact-button" class="button button-secondary" type="button">Build Packet</button>
+              </div>
+
+              <label class="field" for="stage-artifact-packet-textarea">
+                <span class="field-label">Packet</span>
+                <textarea id="stage-artifact-packet-textarea" class="code-textarea" rows="10" readonly>No packet available.</textarea>
+              </label>
+
+              <div class="action-row">
+                <button id="copy-stage-artifact-packet-button" class="button button-secondary" type="button">Copy Packet</button>
+                <button id="copy-stage-artifact-both-button" class="button button-secondary" type="button">Copy Prompt + Packet</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="card tab-context-card" id="tab-context-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Connected AI Tabs</h2>
+                <p class="card-subtitle">Detected AI web tabs available for probing, prompt injection, and capture.</p>
+              </div>
+              <div class="card-actions">
+                <button id="refresh-tab-contexts-button" class="button button-secondary" type="button">Refresh Tabs</button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div id="tab-context-list" class="list-stack">
+                <p class="placeholder-text">No AI tabs detected.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="card event-log-card" id="event-log-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Event Log</h2>
+                <p class="card-subtitle">Recent workflow and integration events.</p>
+              </div>
+              <div class="card-actions">
+                <button id="refresh-event-log-button" class="button button-secondary" type="button">Refresh Log</button>
+                <label class="checkbox-label" for="show-debug-log-checkbox">
+                  <input id="show-debug-log-checkbox" type="checkbox">
+                  <span>Show debug</span>
+                </label>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div id="event-log-list" class="log-list">
+                <p class="placeholder-text">No log entries.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="panel-settings" class="tab-panel" data-tab-panel="settings" role="tabpanel" aria-labelledby="tab-settings-button" hidden>
+        <form id="settings-form" novalidate>
+          <div class="panel-stack">
+            <section class="card settings-auth-card" id="settings-auth-card">
+              <header class="card-header">
+                <div>
+                  <h2 class="card-title">GitHub Authentication</h2>
+                  <p class="card-subtitle">Store a Personal Access Token and validate it against the GitHub API.</p>
+                </div>
+              </header>
+
+              <div class="card-body">
+                <div class="fields-grid">
+                  <label class="field field-full" for="github-pat-input">
+                    <span class="field-label">Personal Access Token</span>
+                    <input id="github-pat-input" class="text-input" type="password" placeholder="github_pat_..." autocomplete="off" spellcheck="false" inputmode="text">
+                  </label>
+
+                  <label class="field" for="github-token-type-input">
+                    <span class="field-label">Token Type</span>
+                    <input id="github-token-type-input" class="text-input" type="text" value="PAT" autocomplete="off" spellcheck="false">
+                  </label>
+
+                  <label class="field" for="github-username-output">
+                    <span class="field-label">Validated User</span>
+                    <input id="github-username-output" class="text-input" type="text" readonly value="">
+                  </label>
+
+                  <label class="field" for="github-last-validated-output">
+                    <span class="field-label">Last Validated</span>
+                    <input id="github-last-validated-output" class="text-input" type="text" readonly value="">
+                  </label>
+                </div>
+
+                <div class="action-row">
+                  <button id="validate-github-button" class="button button-secondary" type="button">Validate Token</button>
+                  <button id="save-github-settings-button" class="button button-primary" type="submit">Save GitHub Settings</button>
+                  <button id="clear-github-token-button" class="button button-danger" type="button">Clear Token</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="card settings-repository-card" id="settings-repository-card">
+              <header class="card-header">
+                <div>
+                  <h2 class="card-title">Repository Settings</h2>
+                  <p class="card-subtitle">Define the GitHub repository, base branch, and default issue query behavior.</p>
+                </div>
+              </header>
+
+              <div class="card-body">
+                <div class="fields-grid">
+                  <label class="field" for="repository-owner-input">
+                    <span class="field-label">Owner</span>
+                    <input id="repository-owner-input" class="text-input" type="text" placeholder="octocat" autocomplete="off" spellcheck="false">
+                  </label>
+
+                  <label class="field" for="repository-repo-input">
+                    <span class="field-label">Repository</span>
+                    <input id="repository-repo-input" class="text-input" type="text" placeholder="example-repo" autocomplete="off" spellcheck="false">
+                  </label>
+
+                  <label class="field" for="repository-base-branch-input">
+                    <span class="field-label">Base Branch</span>
+                    <input id="repository-base-branch-input" class="text-input" type="text" placeholder="main" autocomplete="off" spellcheck="false">
+                  </label>
+
+                  <label class="field" for="repository-working-branch-prefix-input">
+                    <span class="field-label">Working Branch Prefix</span>
+                    <input id="repository-working-branch-prefix-input" class="text-input" type="text" placeholder="maoe/issue-" autocomplete="off" spellcheck="false">
+                  </label>
+
+                  <label class="field" for="repository-issue-state-select">
+                    <span class="field-label">Default Issue State</span>
+                    <select id="repository-issue-state-select" class="select-input">
+                      <option value="open">open</option>
+                      <option value="closed">closed</option>
+                      <option value="all">all</option>
+                    </select>
+                  </label>
+
+                  <label class="field" for="repository-issue-sort-select">
+                    <span class="field-label">Default Issue Sort</span>
+                    <select id="repository-issue-sort-select" class="select-input">
+                      <option value="updated">updated</option>
+                      <option value="created">created</option>
+                      <option value="comments">comments</option>
+                    </select>
+                  </label>
+
+                  <label class="field" for="repository-issue-direction-select">
+                    <span class="field-label">Default Direction</span>
+                    <select id="repository-issue-direction-select" class="select-input">
+                      <option value="desc">desc</option>
+                      <option value="asc">asc</option>
+                    </select>
+                  </label>
+
+                  <label class="field" for="github-api-base-url-input">
+                    <span class="field-label">GitHub API Base URL</span>
+                    <input id="github-api-base-url-input" class="text-input" type="text" value="https://api.github.com" autocomplete="off" spellcheck="false">
+                  </label>
+
+                  <label class="field" for="github-request-timeout-input">
+                    <span class="field-label">Request Timeout (ms)</span>
+                    <input id="github-request-timeout-input" class="text-input" type="number" min="1000" step="1000" value="20000">
+                  </label>
+                </div>
+
+                <div class="summary-block">
+                  <h3 class="summary-title">Repository Validation</h3>
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Resolved Full Name</dt>
+                      <dd id="settings-repository-full-name-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Default Branch</dt>
+                      <dd id="settings-repository-default-branch-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Visibility</dt>
+                      <dd id="settings-repository-visibility-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Repository Link</dt>
+                      <dd><a id="settings-repository-link" href="#" target="_blank" rel="noreferrer noopener">Open</a></dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            </section>
+
+            <section class="card settings-providers-card" id="settings-providers-card">
+              <header class="card-header">
+                <div>
+                  <h2 class="card-title">Provider Routing</h2>
+                  <p class="card-subtitle">Choose the default model family used in each workflow role.</p>
+                </div>
+              </header>
+
+              <div class="card-body">
+                <div class="fields-grid">
+                  <label class="field" for="designer-provider-select">
+                    <span class="field-label">Designer</span>
+                    <select id="designer-provider-select" class="select-input">
+                      <option value="chatgpt">ChatGPT</option>
+                      <option value="claude">Claude</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="grok">Grok</option>
+                    </select>
+                  </label>
+
+                  <label class="field" for="executor-provider-select">
+                    <span class="field-label">Executor</span>
+                    <select id="executor-provider-select" class="select-input">
+                      <option value="chatgpt">ChatGPT</option>
+                      <option value="claude">Claude</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="grok">Grok</option>
+                    </select>
+                  </label>
+
+                  <label class="field" for="auditor-provider-select">
+                    <span class="field-label">Auditor</span>
+                    <select id="auditor-provider-select" class="select-input">
+                      <option value="chatgpt">ChatGPT</option>
+                      <option value="claude">Claude</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="grok">Grok</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="summary-block">
+                  <h3 class="summary-title">Provider Summary</h3>
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Current Active Provider</dt>
+                      <dd id="settings-current-active-provider-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Current Stage</dt>
+                      <dd id="settings-current-stage-value">-</dd>
+                    </div>
+                  </dl>
+                </div>
+              </div>
+            </section>
+
+            <section class="card settings-ui-card" id="settings-ui-card">
+              <header class="card-header">
+                <div>
+                  <h2 class="card-title">Popup Preferences</h2>
+                  <p class="card-subtitle">Transient UI defaults stored inside the extension.</p>
+                </div>
+              </header>
+
+              <div class="card-body">
+                <div class="fields-grid">
+                  <label class="field" for="settings-active-tab-select">
+                    <span class="field-label">Default Popup Tab</span>
+                    <select id="settings-active-tab-select" class="select-input">
+                      <option value="dashboard">dashboard</option>
+                      <option value="settings">settings</option>
+                      <option value="manual_hub">manual_hub</option>
+                    </select>
+                  </label>
+
+                  <label class="checkbox-label" for="settings-show-debug-log-checkbox">
+                    <input id="settings-show-debug-log-checkbox" type="checkbox">
+                    <span>Show debug log by default</span>
+                  </label>
+
+                  <label class="checkbox-label" for="settings-include-issue-body-checkbox">
+                    <input id="settings-include-issue-body-checkbox" type="checkbox" checked>
+                    <span>Include issue body in prompt generation</span>
+                  </label>
+
+                  <label class="checkbox-label" for="settings-include-tree-checkbox">
+                    <input id="settings-include-tree-checkbox" type="checkbox" checked>
+                    <span>Include repository tree in prompt generation</span>
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            <div class="sticky-actions">
+              <button id="save-all-settings-button" class="button button-primary" type="submit">Save All Settings</button>
+              <button id="reload-bootstrap-button" class="button button-secondary" type="button">Reload State</button>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section id="panel-manual_hub" class="tab-panel" data-tab-panel="manual_hub" role="tabpanel" aria-labelledby="tab-manual-hub-button" hidden>
+        <div class="panel-stack">
+          <section class="card manual-hub-outgoing-card" id="manual-hub-outgoing-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Outgoing Packet</h2>
+                <p class="card-subtitle">Create and copy strict JSON packets for human-hub forwarding between AI tabs.</p>
+              </div>
+              <div class="card-actions">
+                <button id="build-manual-packet-button" class="button button-primary" type="button">Build Packet</button>
+                <button id="copy-manual-packet-button" class="button button-secondary" type="button">Copy Packet</button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="summary-grid two-column">
+                <div class="summary-block">
+                  <dl class="summary-list">
+                    <div class="summary-row">
+                      <dt>Current Stage</dt>
+                      <dd id="manual-hub-stage-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Current Provider</dt>
+                      <dd id="manual-hub-provider-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Target File</dt>
+                      <dd id="manual-hub-target-file-value">-</dd>
+                    </div>
+                    <div class="summary-row">
+                      <dt>Packet Length</dt>
+                      <dd id="manual-hub-packet-length-value">-</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <label class="field" for="manual-hub-packet-type-select">
+                  <span class="field-label">Packet Type</span>
+                  <select id="manual-hub-packet-type-select" class="select-input">
+                    <option value="">auto</option>
+                    <option value="TASK_DISPATCH">TASK_DISPATCH</option>
+                    <option value="EXECUTION_RESULT">EXECUTION_RESULT</option>
+                    <option value="AUDIT_REQUEST">AUDIT_REQUEST</option>
+                    <option value="AUDIT_RESULT">AUDIT_RESULT</option>
+                  </select>
+                </label>
+              </div>
+
+              <label class="field" for="manual-hub-packet-textarea">
+                <span class="field-label">Outgoing Packet</span>
+                <textarea id="manual-hub-packet-textarea" class="code-textarea" rows="12" spellcheck="false"></textarea>
+              </label>
+
+              <div class="action-row">
+                <button id="validate-manual-packet-button" class="button button-secondary" type="button">Validate Packet</button>
+                <button id="copy-manual-hub-packet-button" class="button button-secondary" type="button">Copy Outgoing</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="card manual-hub-incoming-card" id="manual-hub-incoming-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Incoming Response</h2>
+                <p class="card-subtitle">Paste AI output, preview parser results, then apply the payload to the workflow.</p>
+              </div>
+              <div class="card-actions">
+                <button id="extract-from-active-tab-button" class="button button-secondary" type="button">Extract Active Tab</button>
+                <button id="submit-manual-response-button" class="button button-primary" type="button">Submit</button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="fields-grid fields-grid-compact">
+                <label class="field" for="manual-response-kind-select">
+                  <span class="field-label">Interpret As</span>
+                  <select id="manual-response-kind-select" class="select-input">
+                    <option value="">auto</option>
+                    <option value="design">design</option>
+                    <option value="executor">executor</option>
+                    <option value="audit">audit</option>
+                    <option value="pull_request">pull_request</option>
+                  </select>
+                </label>
+
+                <label class="checkbox-label" for="manual-response-auto-submit-checkbox">
+                  <input id="manual-response-auto-submit-checkbox" type="checkbox">
+                  <span>Auto submit extracted tab output</span>
+                </label>
+              </div>
+
+              <label class="field" for="manual-response-textarea">
+                <span class="field-label">Raw Response</span>
+                <textarea id="manual-response-textarea" class="code-textarea" rows="12" placeholder="Paste AI response, packet, or pull request URL here." spellcheck="false"></textarea>
+              </label>
+
+              <div class="action-row">
+                <button id="preview-manual-response-button" class="button button-secondary" type="button">Preview Parse</button>
+                <button id="submit-manual-response-confirm-button" class="button button-primary" type="button">Apply to Workflow</button>
+              </div>
+
+              <label class="field" for="manual-response-preview-textarea">
+                <span class="field-label">Parse Preview</span>
+                <textarea id="manual-response-preview-textarea" class="code-textarea" rows="10" readonly>No preview available.</textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="card manual-stage-controls-card" id="manual-stage-controls-card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Manual Stage Controls</h2>
+                <p class="card-subtitle">Force stage/status transitions when human-hub operations need explicit confirmation.</p>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="fields-grid">
+                <label class="field" for="manual-target-stage-select">
+                  <span class="field-label">Target Stage</span>
+                  <select id="manual-target-stage-select" class="select-input">
+                    <option value="idle">idle</option>
+                    <option value="design">design</option>
+                    <option value="execution">execution</option>
+                    <option value="audit">audit</option>
+                    <option value="pr">pr</option>
+                    <option value="completed">completed</option>
+                    <option value="error">error</option>
+                  </select>
+                </label>
+
+                <label class="field" for="manual-target-status-select">
+                  <span class="field-label">Target Status</span>
+                  <select id="manual-target-status-select" class="select-input">
+                    <option value="idle">idle</option>
+                    <option value="ready">ready</option>
+                    <option value="in_progress">in_progress</option>
+                    <option value="awaiting_human">awaiting_human</option>
+                    <option value="approved">approved</option>
+                    <option value="rejected">rejected</option>
+                    <option value="blocked">blocked</option>
+                    <option value="failed">failed</option>
+                    <option value="completed">completed</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="action-row action-row-wrap">
+                <button id="manual-apply-stage-state-button" class="button button-primary" type="button">Apply Stage/Status</button>
+                <button id="manual-mark-ready-button" class="button button-secondary" type="button">Mark Ready</button>
+                <button id="manual-mark-in-progress-button" class="button button-secondary" type="button">Mark In Progress</button>
+                <button id="manual-mark-await-human-button" class="button button-secondary" type="button">Await Human</button>
+                <button id="manual-mark-approved-button" class="button button-secondary" type="button">Approve</button>
+                <button id="manual-mark-rejected-button" class="button button-secondary" type="button">Reject</button>
+                <button id="manual-mark-completed-button" class="button button-secondary" type="button">Complete</button>
+                <button id="manual-clear-error-button" class="button button-danger" type="button">Clear Error</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <div class="footer-row">
+        <span id="footer-version-label">Protocol 1.0.0</span>
+        <span id="footer-runtime-label">Service worker not initialized.</span>
+      </div>
+    </footer>
+
+    <template id="issue-row-template">
+      <tr class="issue-row" data-issue-number="">
+        <td class="cell-select">
+          <input class="issue-select-radio" type="radio" name="issue-select-radio">
+        </td>
+        <td class="cell-number issue-number"></td>
+        <td class="cell-title issue-title"></td>
+        <td class="cell-state issue-state"></td>
+        <td class="cell-updated issue-updated"></td>
+        <td class="cell-labels issue-labels"></td>
+      </tr>
+    </template>
+
+    <template id="tab-context-item-template">
+      <article class="list-card tab-context-item" data-tab-id="">
+        <header class="list-card-header">
+          <div class="list-card-heading">
+            <h3 class="list-card-title tab-context-title"></h3>
+            <p class="list-card-subtitle tab-context-subtitle"></p>
+          </div>
+          <div class="list-card-actions">
+            <button class="button button-secondary tab-probe-button" type="button">Probe</button>
+            <button class="button button-secondary tab-send-prompt-button" type="button">Send Prompt</button>
+            <button class="button button-secondary tab-extract-button" type="button">Extract</button>
+          </div>
+        </header>
+
+        <dl class="summary-list compact-summary-list">
+          <div class="summary-row">
+            <dt>Provider</dt>
+            <dd class="tab-context-provider"></dd>
+          </div>
+          <div class="summary-row">
+            <dt>Site</dt>
+            <dd class="tab-context-site"></dd>
+          </div>
+          <div class="summary-row">
+            <dt>Stage</dt>
+            <dd class="tab-context-stage"></dd>
+          </div>
+          <div class="summary-row">
+            <dt>Ready</dt>
+            <dd class="tab-context-ready"></dd>
+          </div>
+          <div class="summary-row">
+            <dt>Last Seen</dt>
+            <dd class="tab-context-last-seen"></dd>
+          </div>
+          <div class="summary-row">
+            <dt>Last Output</dt>
+            <dd class="tab-context-last-output"></dd>
+          </div>
+        </dl>
+
+        <p class="tab-context-url"></p>
+      </article>
+    </template>
+
+    <template id="event-log-item-template">
+      <article class="log-entry" data-level="">
+        <header class="log-entry-header">
+          <div class="log-entry-heading">
+            <strong class="log-entry-message"></strong>
+            <span class="log-entry-code"></span>
+          </div>
+          <time class="log-entry-time"></time>
+        </header>
+        <pre class="log-entry-context"></pre>
+      </article>
+    </template>
+
+    <div id="live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  </div>
+
+  <script src="../common/namespace.js"></script>
+  <script src="../common/constants.js"></script>
+  <script src="../common/logger.js"></script>
+  <script src="../common/storage.js"></script>
+  <script src="../common/protocol.js"></script>
+  <script src="../common/parsers/fenced_block_parser.js"></script>
+  <script src="../common/parsers/ai_payload_parser.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
