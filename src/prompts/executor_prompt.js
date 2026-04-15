@@ -24,24 +24,24 @@
   const util = root.util || Object.create(null);
 
   const cloneValue = typeof util.cloneValue === 'function'
-    ? util.cloneValue
-    : function fallbackClone(value) {
-      if (value === null || typeof value !== 'object') {
-        return value;
-      }
+  ? util.cloneValue
+  : function fallbackClone(value) {
+    if (value === null || typeof value !== 'object') {
+      return value;
+    }
 
-      try {
-        return JSON.parse(JSON.stringify(value));
-      } catch (error) {
-        return value;
-      }
-    };
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (error) {
+      return value;
+    }
+  };
 
   const deepFreeze = typeof util.deepFreeze === 'function'
-    ? util.deepFreeze
-    : function passthrough(value) {
-      return value;
-    };
+  ? util.deepFreeze
+  : function passthrough(value) {
+    return value;
+  };
 
   function createFallbackLogger() {
     const consoleObject = typeof console !== 'undefined' ? console : null;
@@ -73,6 +73,7 @@
         emit('error', message, context);
       }
     };
+
   }
 
   function createScopedLogger() {
@@ -86,19 +87,19 @@
       try {
         return loggerModule.createScope('executor_prompt');
       } catch (error) {
-        // Fallback to basic check
       }
     }
 
     if (loggerModule
-      && typeof loggerModule.debug === 'function'
-      && typeof loggerModule.info === 'function'
-      && typeof loggerModule.warn === 'function'
-      && typeof loggerModule.error === 'function') {
+    && typeof loggerModule.debug === 'function'
+    && typeof loggerModule.info === 'function'
+    && typeof loggerModule.warn === 'function'
+    && typeof loggerModule.error === 'function') {
       return loggerModule;
     }
 
     return createFallbackLogger();
+
   }
 
   const logger = createScopedLogger();
@@ -116,40 +117,40 @@
 
   const TEMPLATE_IDS = PROMPT.TEMPLATE_IDS || Object.create(null);
   const TEMPLATE_ID = typeof TEMPLATE_IDS.EXECUTOR === 'string' && TEMPLATE_IDS.EXECUTOR
-    ? TEMPLATE_IDS.EXECUTOR
-    : 'executor_prompt_v1';
+  ? TEMPLATE_IDS.EXECUTOR
+  : 'executor_prompt_v1';
   const TEMPLATE_VERSION = typeof APP.protocolVersion === 'string' && APP.protocolVersion
-    ? APP.protocolVersion
-    : '1.0.0';
+  ? APP.protocolVersion
+  : '1.0.0';
 
   const OUTPUT_CONTRACT_DEFAULTS = isPlainObject(PROMPT.OUTPUT_CONTRACTS)
-    && isPlainObject(PROMPT.OUTPUT_CONTRACTS.EXECUTOR)
-    ? PROMPT.OUTPUT_CONTRACTS.EXECUTOR
-    : Object.create(null);
+  && isPlainObject(PROMPT.OUTPUT_CONTRACTS.EXECUTOR)
+  ? PROMPT.OUTPUT_CONTRACTS.EXECUTOR
+  : Object.create(null);
   const PLACEHOLDERS = isPlainObject(PROMPT.PLACEHOLDERS)
-    ? PROMPT.PLACEHOLDERS
-    : Object.create(null);
+  ? PROMPT.PLACEHOLDERS
+  : Object.create(null);
   const REQUIRED_SECTIONS = Array.isArray(PROMPT.REQUIRED_SECTIONS && PROMPT.REQUIRED_SECTIONS.EXECUTOR)
-    ? PROMPT.REQUIRED_SECTIONS.EXECUTOR.slice()
-    : ['task', 'constraints', 'repository_context', 'output_contract'];
+  ? PROMPT.REQUIRED_SECTIONS.EXECUTOR.slice()
+  : ['task', 'constraints', 'repository_context', 'output_contract'];
 
   const FILE_ROOT_TAG = typeof PARSER_XML.FILE_ROOT_TAG === 'string' && PARSER_XML.FILE_ROOT_TAG
-    ? PARSER_XML.FILE_ROOT_TAG
-    : 'File';
+  ? PARSER_XML.FILE_ROOT_TAG
+  : 'File';
   const FILE_PATH_ATTRIBUTE = typeof PARSER_XML.FILE_PATH_ATTRIBUTE === 'string' && PARSER_XML.FILE_PATH_ATTRIBUTE
-    ? PARSER_XML.FILE_PATH_ATTRIBUTE
-    : 'path';
+  ? PARSER_XML.FILE_PATH_ATTRIBUTE
+  : 'path';
   const FILE_CDATA_REQUIRED = PARSER_XML.CDATA_REQUIRED !== false;
 
   const DEFAULT_PROVIDER_ID = typeof DEFAULT_PROVIDER_BY_ROLE.executor === 'string'
-    ? DEFAULT_PROVIDER_BY_ROLE.executor
-    : '';
+  ? DEFAULT_PROVIDER_BY_ROLE.executor
+  : '';
   const DEFAULT_PROVIDER = DEFAULT_PROVIDER_ID && PROVIDERS[DEFAULT_PROVIDER_ID]
-    ? PROVIDERS[DEFAULT_PROVIDER_ID]
-    : null;
+  ? PROVIDERS[DEFAULT_PROVIDER_ID]
+  : null;
   const DEFAULT_PROVIDER_LABEL = DEFAULT_PROVIDER && DEFAULT_PROVIDER.displayName
-    ? DEFAULT_PROVIDER.displayName
-    : 'Executor AI';
+  ? DEFAULT_PROVIDER.displayName
+  : 'Executor AI';
 
   const SECTION_IDS = deepFreeze({
     ROLE: 'role',
@@ -176,25 +177,25 @@
   });
 
   const DEFAULT_TEMPLATE = [
-    LOCAL_PLACEHOLDERS.ROLE_DIRECTIVE,
-    '',
-    '## task',
-    LOCAL_PLACEHOLDERS.TASK_SECTION,
-    '',
-    '## constraints',
-    LOCAL_PLACEHOLDERS.CONSTRAINTS_SECTION,
-    '',
-    '## repository_context',
-    LOCAL_PLACEHOLDERS.REPOSITORY_CONTEXT_SECTION,
-    '',
-    '## current_code',
-    LOCAL_PLACEHOLDERS.CURRENT_CODE_SECTION,
-    '',
-    '## output_contract',
-    LOCAL_PLACEHOLDERS.OUTPUT_CONTRACT_SECTION,
-    '',
-    '## self_check',
-    LOCAL_PLACEHOLDERS.SELF_CHECK_SECTION
+  LOCAL_PLACEHOLDERS.ROLE_DIRECTIVE,
+  '',
+  '## task',
+  LOCAL_PLACEHOLDERS.TASK_SECTION,
+  '',
+  '## constraints',
+  LOCAL_PLACEHOLDERS.CONSTRAINTS_SECTION,
+  '',
+  '## repository_context',
+  LOCAL_PLACEHOLDERS.REPOSITORY_CONTEXT_SECTION,
+  '',
+  '## current_code',
+  LOCAL_PLACEHOLDERS.CURRENT_CODE_SECTION,
+  '',
+  '## output_contract',
+  LOCAL_PLACEHOLDERS.OUTPUT_CONTRACT_SECTION,
+  '',
+  '## self_check',
+  LOCAL_PLACEHOLDERS.SELF_CHECK_SECTION
   ].join('\n');
 
   const DEFAULT_LIMITS = deepFreeze({
@@ -219,6 +220,7 @@
 
     const prototype = Object.getPrototypeOf(value);
     return prototype === Object.prototype || prototype === null;
+
   }
 
   function normalizeString(value) {
@@ -227,10 +229,11 @@
 
   function normalizeMultilineText(value) {
     const source = coerceBlockText(value)
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n');
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
 
     return source.trim();
+
   }
 
   function coerceBlockText(value) {
@@ -265,6 +268,7 @@
     }
 
     return String(value);
+
   }
 
   function normalizeBoolean(value, fallbackValue) {
@@ -289,6 +293,7 @@
     }
 
     return !!fallbackValue;
+
   }
 
   function normalizeOptionalMaxChars(value, fallbackValue) {
@@ -307,6 +312,7 @@
     }
 
     return Math.max(1, Math.trunc(numberValue));
+
   }
 
   function oneOf(value, allowedValues, fallbackValue) {
@@ -317,6 +323,7 @@
     }
 
     return fallbackValue;
+
   }
 
   function normalizeStringArray(value) {
@@ -345,6 +352,7 @@
     }
 
     return result;
+
   }
 
   function truncateMiddle(text, maxChars, label) {
@@ -391,7 +399,9 @@
       maxChars: normalizedMax,
       label: descriptor
     };
+
   }
+
   function guessLanguageFromPath(path) {
     const normalizedPath = normalizeString(path).toLowerCase();
 
@@ -406,50 +416,51 @@
       case 'js':
       case 'cjs':
       case 'mjs':
-        return 'javascript';
+      return 'javascript';
       case 'ts':
-        return 'typescript';
+      return 'typescript';
       case 'jsx':
-        return 'jsx';
+      return 'jsx';
       case 'tsx':
-        return 'tsx';
+      return 'tsx';
       case 'json':
-        return 'json';
+      return 'json';
       case 'css':
-        return 'css';
+      return 'css';
       case 'html':
       case 'htm':
-        return 'html';
+      return 'html';
       case 'xml':
-        return 'xml';
+      return 'xml';
       case 'md':
-        return 'markdown';
+      return 'markdown';
       case 'yaml':
       case 'yml':
-        return 'yaml';
+      return 'yaml';
       case 'py':
-        return 'python';
+      return 'python';
       case 'sh':
-        return 'bash';
+      return 'bash';
       case 'rb':
-        return 'ruby';
+      return 'ruby';
       case 'go':
-        return 'go';
+      return 'go';
       case 'java':
-        return 'java';
+      return 'java';
       case 'kt':
-        return 'kotlin';
+      return 'kotlin';
       case 'swift':
-        return 'swift';
+      return 'swift';
       case 'php':
-        return 'php';
+      return 'php';
       case 'rs':
-        return 'rust';
+      return 'rust';
       case 'sql':
-        return 'sql';
+      return 'sql';
       default:
-        return 'text';
+      return 'text';
     }
+
   }
 
   function findProviderById(providerId) {
@@ -465,6 +476,7 @@
     }
 
     return hasOwn(PROVIDERS, normalized) ? PROVIDERS[normalized] : null;
+
   }
 
   function normalizeProviderId(value) {
@@ -475,13 +487,14 @@
     }
 
     return hasOwn(PROVIDERS, normalized) ? normalized : DEFAULT_PROVIDER_ID;
+
   }
 
   function normalizeProviderLabel(providerId) {
     const provider = findProviderById(providerId);
     return provider && normalizeString(provider.displayName)
-      ? normalizeString(provider.displayName)
-      : DEFAULT_PROVIDER_LABEL;
+    ? normalizeString(provider.displayName)
+    : DEFAULT_PROVIDER_LABEL;
   }
 
   function formatRepositoryName(repository) {
@@ -498,16 +511,18 @@
     }
 
     return '(repository unspecified)';
+
   }
 
   function formatIssueHeader(issue) {
     const source = isPlainObject(issue) ? issue : createNullObject();
     const title = normalizeString(source.title) || '(untitled issue)';
     const number = source.number === null || typeof source.number === 'undefined' || source.number === ''
-      ? '#?'
-      : '#' + String(source.number);
+    ? '#?'
+    : '#' + String(source.number);
 
     return number + ' ' + title;
+
   }
 
   function nowIsoString() {
@@ -526,6 +541,7 @@
     }
 
     return '`'.repeat(length);
+
   }
 
   function buildFencedBlock(language, text) {
@@ -545,6 +561,7 @@
     }
 
     return lines.join('\n');
+
   }
 
   function createDefaultInstruction(issue, targetFile) {
@@ -566,6 +583,7 @@
     }
 
     return lines.join('\n');
+
   }
 
   function normalizeOutputContract(outputContract, targetFile) {
@@ -582,6 +600,7 @@
       cdataRequired: true,
       expectedPath: normalizedPath
     });
+
   }
 
   function createValidationIssue(field, code, message, details) {
@@ -592,8 +611,7 @@
       details: isPlainObject(details) ? cloneValue(details) : createNullObject()
     });
   }
-
-  function normalizeContext(context, options) {
+    function normalizeContext(context, options) {
     const source = isPlainObject(context) ? cloneValue(context) : createNullObject();
     const config = isPlainObject(options) ? cloneValue(options) : createNullObject();
 
@@ -676,6 +694,7 @@
     };
 
     return deepFreeze(normalized);
+
   }
 
   function validateContext(context, options) {
@@ -754,6 +773,7 @@
       errors: errors,
       warnings: warnings
     });
+
   }
 
   function createSection(id, title, content, required, meta) {
@@ -810,6 +830,7 @@
       issueBodyLength: issueBodyBlock.originalLength,
       issueBodyTruncated: issueBodyBlock.truncated
     });
+
   }
 
   function buildConstraintItems(normalized) {
@@ -839,6 +860,7 @@
     }
 
     return items;
+
   }
 
   function buildConstraintsSection(normalized) {
@@ -900,6 +922,7 @@
         truncated: treeBlock.truncated
       }
     );
+
   }
 
   function buildCurrentCodeSection(normalized) {
@@ -951,6 +974,7 @@
         language: language
       }
     );
+
   }
 
   function buildOutputContractExample(normalized) {
@@ -964,13 +988,14 @@
     ].join('\n');
 
     return buildFencedBlock('xml', exampleXml);
+
   }
 
   function buildOutputContractSection(normalized) {
     const items = [
       '返答は xml fenced block を1個だけ返す。',
       'フェンスの内側は <' + FILE_ROOT_TAG + '> 1要素だけにする。',
-      "'" + normalized.outputContract.pathAttribute + "' 属性の値は " + normalized.targetFile + " に固定する。",
+      '' + normalized.outputContract.pathAttribute + ' 属性の値は ' + normalized.targetFile + ' に固定する。',
       'CDATA の中には対象ファイルの 完成後全文のみ を置く。',
       'XML の外側には一切何も出力しない。',
       '差分記法、説明文、複数ファイル、補助ブロック、レビュー文を出力しない。'
@@ -993,6 +1018,7 @@
         pathAttribute: normalized.outputContract.pathAttribute
       }
     );
+
   }
 
   function buildSelfCheckSection(normalized) {
@@ -1014,6 +1040,7 @@
         itemCount: items.length
       }
     );
+
   }
 
   function buildSections(context, options) {
@@ -1029,6 +1056,7 @@
     ];
 
     return deepFreeze(sections);
+
   }
 
   function getSectionMap(sections) {
@@ -1040,6 +1068,7 @@
     }
 
     return map;
+
   }
 
   function getPlaceholderMap(context, options) {
@@ -1093,6 +1122,7 @@
     }
 
     return deepFreeze(output);
+
   }
 
   function fillTemplate(template, placeholders) {
@@ -1105,6 +1135,7 @@
     }
 
     return output;
+
   }
 
   function createDefaultSourceEndpoint() {
@@ -1167,6 +1198,7 @@
     });
 
     return deepFreeze(packet);
+
   }
 
   function buildManualHubPacketText(context, options) {
@@ -1179,6 +1211,7 @@
       fenceLanguage: normalizeString(config.fenceLanguage) || 'json',
       space: Number.isFinite(Number(config.space)) ? Math.max(0, Math.trunc(Number(config.space))) : 2
     });
+
   }
 
   function buildExecutionBrief(context, options) {
@@ -1192,6 +1225,7 @@
     lines.push('template_id: ' + normalized.templateId);
 
     return lines.join('\n');
+
   }
 
   function buildPromptMetadata(normalized, validation, sections, promptText, packet) {
@@ -1217,6 +1251,7 @@
       hasCurrentCode: coerceBlockText(normalized.currentCode) !== '',
       packetRequestId: packet && normalizeString(packet.requestId) ? normalizeString(packet.requestId) : ''
     });
+
   }
 
   function createPrompt(context, options) {
@@ -1260,6 +1295,7 @@
       warnings: validation.warnings,
       metadata: buildPromptMetadata(normalized, validation, sections, text, packet)
     });
+
   }
 
   function buildPrompt(context, options) {
@@ -1278,6 +1314,7 @@
     }
 
     return prompt.text;
+
   }
 
   const api = {
