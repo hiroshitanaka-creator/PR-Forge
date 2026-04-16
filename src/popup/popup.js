@@ -1,519 +1,543 @@
-(function registerMAOEPopup(globalScope) {
-  'use strict';
+function bindGlobalControls() {
+const dom = getDom();
 
-
-const root = globalScope.MAOE;
-
-if (!root || typeof root.registerValue !== 'function') {
-throw new Error('[MAOE] namespace.js must be loaded before popup.js.');
-}
-
-if (root.has('popup')) {
-return;
-}
-
-if (!root.has('constants')) {
-throw new Error('[MAOE] constants.js must be loaded before popup.js.');
-}
-
-if (!root.has('storage')) {
-throw new Error('[MAOE] storage.js must be loaded before popup.js.');
-}
-
-if (!root.has('protocol')) {
-throw new Error('[MAOE] protocol.js must be loaded before popup.js.');
-}
-
-if (!root.has('ai_payload_parser')) {
-throw new Error('[MAOE] ai_payload_parser.js must be loaded before popup.js.');
-}
-
-const constants = root.require('constants');
-const storage = root.require('storage');
-const protocol = root.require('protocol');
-const aiPayloadParser = root.require('ai_payload_parser');
-const util = root.util || Object.create(null);
-
-const cloneValue = typeof util.cloneValue === 'function'
-? util.cloneValue
-: function fallbackClone(value) {
-if (value === null || typeof value !== 'object') {
-return value;
-}
-
-    try {
-      return JSON.parse(JSON.stringify(value));
-    } catch (error) {
-      return value;
-    }
-  };
-
-const deepFreeze = typeof util.deepFreeze === 'function'
-? util.deepFreeze
-: function passthrough(value) {
-return value;
-};
-
-const hasOwn = typeof util.hasOwn === 'function'
-? util.hasOwn
-: function fallbackHasOwn(target, key) {
-return Object.prototype.hasOwnProperty.call(target, key);
-};
-
-function createFallbackLogger() {
-const consoleObject = typeof console !== 'undefined' ? console : null;
-
-function emit(level, message, context) {
-  if (!consoleObject || typeof consoleObject[level] !== 'function') {
-    return;
-  }
-
-  if (typeof context === 'undefined') {
-    consoleObject[level]('[MAOE/popup] ' + message);
-    return;
-  }
-
-  consoleObject[level]('[MAOE/popup] ' + message, context);
-}
-
-return {
-  debug: function debug(message, context) {
-    emit('debug', message, context);
-  },
-  info: function info(message, context) {
-    emit('info', message, context);
-  },
-  warn: function warn(message, context) {
-    emit('warn', message, context);
-  },
-  error: function error(message, context) {
-    emit('error', message, context);
-  }
-};
-
-}
-
-function createScopedLogger() {
-if (!root.has('logger')) {
-return createFallbackLogger();
-}
-
-const loggerModule = root.require('logger');
-
-if (loggerModule && typeof loggerModule.createScope === 'function') {
-  try {
-    return loggerModule.createScope('popup');
-  } catch (error) {
-  }
-}
-
-if (loggerModule
-  && typeof loggerModule.debug === 'function'
-  && typeof loggerModule.info === 'function'
-  && typeof loggerModule.warn === 'function'
-  && typeof loggerModule.error === 'function') {
-  return loggerModule;
-}
-
-return createFallbackLogger();
-
-}
-
-const logger = createScopedLogger();
-
-const APP = constants.APP || Object.create(null);
-const DEFAULTS = constants.DEFAULTS || Object.create(null);
-const ERROR_CODES = constants.ERROR_CODES || Object.create(null);
-const GITHUB = constants.GITHUB || Object.create(null);
-const HOSTS = constants.HOSTS || Object.create(null);
-const LOGGING = constants.LOGGING || Object.create(null);
-const MANUAL_HUB = constants.MANUAL_HUB || Object.create(null);
-const MESSAGING = constants.MESSAGING || Object.create(null);
-const PARSER = constants.PARSER || Object.create(null);
-const PROVIDERS = constants.PROVIDERS || Object.create(null);
-const REPOSITORY = constants.REPOSITORY || Object.create(null);
-const WORKFLOW = constants.WORKFLOW || Object.create(null);
-const CONSTANT_HELPERS = constants.helpers || Object.create(null);
-const protocolHelpers = protocol.helpers || Object.create(null);
-
-const MESSAGE_TYPES = MESSAGING.TYPES || Object.create(null);
-const RESPONSE_STATUS = MESSAGING.RESPONSE_STATUS || Object.create(null);
-const WORKFLOW_ROLES = WORKFLOW.ROLES || Object.create(null);
-const WORKFLOW_STAGES = WORKFLOW.STAGES || Object.create(null);
-const WORKFLOW_STATUSES = WORKFLOW.STATUSES || Object.create(null);
-const REVIEW_VERDICTS = WORKFLOW.REVIEW_VERDICTS || Object.create(null);
-
-const ROLE_DESIGNER = normalizeLowerString(WORKFLOW_ROLES.DESIGNER || 'designer');
-const ROLE_EXECUTOR = normalizeLowerString(WORKFLOW_ROLES.EXECUTOR || 'executor');
-const ROLE_AUDITOR = normalizeLowerString(WORKFLOW_ROLES.AUDITOR || 'auditor');
-
-const STAGE_IDLE = normalizeLowerString(WORKFLOW_STAGES.IDLE || 'idle');
-const STAGE_DESIGN = normalizeLowerString(WORKFLOW_STAGES.DESIGN || 'design');
-const STAGE_EXECUTION = normalizeLowerString(WORKFLOW_STAGES.EXECUTION || 'execution');
-const STAGE_AUDIT = normalizeLowerString(WORKFLOW_STAGES.AUDIT || 'audit');
-const STAGE_PR = normalizeLowerString(WORKFLOW_STAGES.PR || 'pr');
-const STAGE_COMPLETED = normalizeLowerString(WORKFLOW_STAGES.COMPLETED || 'completed');
-const STAGE_ERROR = normalizeLowerString(WORKFLOW_STAGES.ERROR || 'error');
-
-const STATUS_IDLE = normalizeLowerString(WORKFLOW_STATUSES.IDLE || 'idle');
-const STATUS_READY = normalizeLowerString(WORKFLOW_STATUSES.READY || 'ready');
-const STATUS_IN_PROGRESS = normalizeLowerString(WORKFLOW_STATUSES.IN_PROGRESS || 'in_progress');
-const STATUS_AWAITING_HUMAN = normalizeLowerString(WORKFLOW_STATUSES.AWAITING_HUMAN || 'awaiting_human');
-const STATUS_APPROVED = normalizeLowerString(WORKFLOW_STATUSES.APPROVED || 'approved');
-const STATUS_REJECTED = normalizeLowerString(WORKFLOW_STATUSES.REJECTED || 'rejected');
-const STATUS_BLOCKED = normalizeLowerString(WORKFLOW_STATUSES.BLOCKED || 'blocked');
-const STATUS_FAILED = normalizeLowerString(WORKFLOW_STATUSES.FAILED || 'failed');
-const STATUS_COMPLETED = normalizeLowerString(WORKFLOW_STATUSES.COMPLETED || 'completed');
-
-const REVIEW_APPROVE = normalizeUpperString(REVIEW_VERDICTS.APPROVE || 'APPROVE');
-const REVIEW_REJECT = normalizeUpperString(REVIEW_VERDICTS.REJECT || 'REJECT');
-
-const DEFAULT_PROTOCOL_VERSION = normalizeString(APP.protocolVersion) || '1.0.0';
-const DEFAULT_RESPONSE_STATUS_OK = normalizeString(RESPONSE_STATUS.OK || 'ok') || 'ok';
-const DEFAULT_RESPONSE_STATUS_ERROR = normalizeString(RESPONSE_STATUS.ERROR || 'error') || 'error';
-const DEFAULT_BASE_URL = normalizeString(GITHUB.API_BASE_URL || HOSTS.GITHUB_API_BASE_URL || 'https://api.github.com').replace(/\/$/, '');
-const DEFAULT_BASE_BRANCH = normalizeString(REPOSITORY.DEFAULT_BASE_BRANCH || 'main');
-const DEFAULT_WORKING_BRANCH_PREFIX = normalizeString(REPOSITORY.WORKING_BRANCH_PREFIX || 'maoe/issue-');
-const DEFAULT_EVENT_LOG_LEVEL = normalizeString(LOGGING.DEFAULT_LEVEL || 'info') || 'info';
-const DEFAULT_BODY_PREVIEW_LENGTH = 240;
-const STORAGE_AREA_LOCAL = storage.areas && storage.areas.LOCAL ? storage.areas.LOCAL : 'local';
-const POPUP_TRANSIENT_STORAGE_KEY = 'popup_transient_preferences';
-
-const DEFAULT_PROVIDER_IDS = deepFreeze((function buildDefaultProviderIds() {
-const output = Object.create(null);
-
-output[ROLE_DESIGNER] = normalizeLowerString(
-  constants.DEFAULT_PROVIDER_BY_ROLE && constants.DEFAULT_PROVIDER_BY_ROLE[ROLE_DESIGNER]
-  || DEFAULTS.settings && DEFAULTS.settings.agents && DEFAULTS.settings.agents.designerProviderId
-  || ''
-);
-output[ROLE_EXECUTOR] = normalizeLowerString(
-  constants.DEFAULT_PROVIDER_BY_ROLE && constants.DEFAULT_PROVIDER_BY_ROLE[ROLE_EXECUTOR]
-  || DEFAULTS.settings && DEFAULTS.settings.agents && DEFAULTS.settings.agents.executorProviderId
-  || ''
-);
-output[ROLE_AUDITOR] = normalizeLowerString(
-  constants.DEFAULT_PROVIDER_BY_ROLE && constants.DEFAULT_PROVIDER_BY_ROLE[ROLE_AUDITOR]
-  || DEFAULTS.settings && DEFAULTS.settings.agents && DEFAULTS.settings.agents.auditorProviderId
-  || ''
-);
-
-return output;
-
-}()));
-
-const runtimeState = root.ensureState('popup_runtime', function createRuntimeState() {
-return {
-initialized: false,
-initializingPromise: null,
-bootstrappedAt: '',
-bootstrap: null,
-dashboard: null,
-workflow: null,
-stageArtifact: null,
-issuesEnvelope: null,
-repositoryTreeEnvelope: null,
-tabContexts: [],
-eventLog: [],
-lastSubmission: null,
-lastError: null,
-selectedIssueNumber: null,
-dom: null,
-busy: Object.create(null),
-dirty: {
-activeTab: false,
-issueFilter: false,
-showDebugLog: false,
-manualPacket: false,
-manualResponse: false,
-targetFile: false,
-treePathPrefix: false
-},
-ui: {
-activeTab: 'dashboard',
-issueFilter: '',
-showDebugLog: false
-},
-manualHub: {
-lastPacketType: '',
-lastPacketText: '',
-lastResponseText: '',
-clipboardFormat: normalizeString(MANUAL_HUB.CLIPBOARD && MANUAL_HUB.CLIPBOARD.PREFERRED_FENCE_LANGUAGE) || 'json'
-},
-transientPreferences: {
-includeIssueBody: true,
-includeTree: true
-},
-refreshTimer: null,
-liveRegionTimer: null,
-runtimeMessageListenerInstalled: false,
-lastStatusText: '',
-lastCopiedTextKind: ''
-};
+dom.dismissGlobalErrorButton.addEventListener('click', function onDismissGlobalErrorClick() {
+  clearErrorBanner();
+  showStatus('info', runtimeState.lastStatusText || 'Ready.');
+  announce('Error dismissed.');
 });
 
-function createNullObject() {
-return Object.create(null);
 }
 
-function isPlainObject(value) {
-if (value === null || typeof value !== 'object') {
-return false;
-}
+function bindRepositoryControls() {
+const dom = getDom();
 
-if (Object.prototype.toString.call(value) !== '[object Object]') {
-  return false;
-}
+dom.loadRepoTreeButton.addEventListener('click', function onLoadRepoTreeClick() {
+  void withErrorHandling(function execute() {
+    return loadRepositoryTree({
+      refreshTree: true,
+      successText: 'Repository tree loaded.'
+    });
+  }, 'Failed to load repository tree.');
+});
 
-const prototype = Object.getPrototypeOf(value);
-return prototype === Object.prototype || prototype === null;
+dom.treePathPrefixInput.addEventListener('input', function onTreePathPrefixInput() {
+  runtimeState.dirty.treePathPrefix = true;
+});
 
-}
-
-function normalizeString(value) {
-return typeof value === 'string' ? value.trim() : '';
-}
-
-function normalizeLowerString(value) {
-return normalizeString(value).toLowerCase();
-}
-
-function normalizeUpperString(value) {
-return normalizeString(value).toUpperCase();
-}
-
-function coerceText(value) {
-if (typeof value === 'string') {
-return value;
-}
-
-if (value === null || typeof value === 'undefined') {
-  return '';
-}
-
-return String(value);
-
-}
-
-function normalizeBoolean(value, fallbackValue) {
-if (typeof value === 'boolean') {
-return value;
-}
-
-if (typeof value === 'number') {
-  return value !== 0;
-}
-
-if (typeof value === 'string') {
-  const normalized = value.trim().toLowerCase();
-
-  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
-    return true;
+dom.treePathPrefixInput.addEventListener('keydown', function onTreePathPrefixKeydown(event) {
+  if (event.key !== 'Enter') {
+    return;
   }
 
-  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
-    return false;
-  }
-}
+  event.preventDefault();
 
-return !!fallbackValue;
-
-}
-
-function normalizeIntegerOrNull(value) {
-if (value === null || typeof value === 'undefined' || value === '') {
-return null;
-}
-
-const numberValue = Number(value);
-
-if (!Number.isFinite(numberValue)) {
-  return null;
-}
-
-return Math.trunc(numberValue);
+  void withErrorHandling(function execute() {
+    return loadRepositoryTree({
+      refreshTree: true,
+      successText: 'Repository tree loaded.'
+    });
+  }, 'Failed to load repository tree.');
+});
 
 }
 
-function normalizePositiveInteger(value, fallbackValue) {
-const fallback = Number.isFinite(Number(fallbackValue))
-? Math.max(1, Math.trunc(Number(fallbackValue)))
-: 1;
+function bindIssueControls() {
+const dom = getDom();
 
-if (!Number.isFinite(Number(value))) {
-  return fallback;
-}
+dom.loadIssuesButton.addEventListener('click', function onLoadIssuesClick() {
+  void withErrorHandling(function execute() {
+    return loadIssues({
+      refreshIssues: false,
+      autoPaginate: true,
+      successText: 'Issues loaded.'
+    });
+  }, 'Failed to load issues.');
+});
 
-return Math.max(1, Math.trunc(Number(value)));
+dom.refreshIssuesButton.addEventListener('click', function onRefreshIssuesClick() {
+  void withErrorHandling(function execute() {
+    return loadIssues({
+      refreshIssues: true,
+      autoPaginate: true,
+      successText: 'Issues refreshed.'
+    });
+  }, 'Failed to refresh issues.');
+});
 
-}
+dom.issueFilterInput.addEventListener('input', function onIssueFilterInput() {
+  updateIssueFilter(dom.issueFilterInput.value, {
+    persist: true
+  });
+});
 
-function normalizeOptionalPositiveInteger(value, fallbackValue) {
-if (value === null || typeof value === 'undefined' || value === '') {
-if (fallbackValue === null || typeof fallbackValue === 'undefined') {
-return null;
-}
+dom.issuesTableBody.addEventListener('change', function onIssuesTableBodyChange(event) {
+  const target = event.target;
 
-  return normalizePositiveInteger(fallbackValue, 1);
-}
-
-const numberValue = Number(value);
-
-if (!Number.isFinite(numberValue)) {
-  if (fallbackValue === null || typeof fallbackValue === 'undefined') {
-    return null;
+  if (!target || typeof target.closest !== 'function') {
+    return;
   }
 
-  return normalizePositiveInteger(fallbackValue, 1);
-}
+  const radio = target.closest('.issue-select-radio');
 
-if (numberValue <= 0) {
-  return null;
-}
-
-return Math.max(1, Math.trunc(numberValue));
-
-}
-
-function oneOf(value, allowedValues, fallbackValue) {
-const normalizedValue = typeof value === 'string' ? value.trim() : value;
-
-if (Array.isArray(allowedValues) && allowedValues.indexOf(normalizedValue) >= 0) {
-  return normalizedValue;
-}
-
-return fallbackValue;
-
-}
-
-function stableObject(value) {
-return isPlainObject(value) ? cloneValue(value) : createNullObject();
-}
-
-function stableArray(value) {
-return Array.isArray(value) ? value.slice() : [];
-}
-
-function uniqueStrings(values) {
-const source = Array.isArray(values) ? values : [];
-const output = [];
-const seen = new Set();
-
-for (const entry of source) {
-  const normalized = normalizeString(entry);
-
-  if (!normalized || seen.has(normalized)) {
-    continue;
+  if (!radio) {
+    return;
   }
 
-  seen.add(normalized);
-  output.push(normalized);
-}
+  setSelectedIssueNumber(radio.value);
+});
 
-return output;
+dom.issuesTableBody.addEventListener('click', function onIssuesTableBodyClick(event) {
+  const target = event.target;
 
-}
-
-function mergePlainObjects() {
-const output = createNullObject();
-
-for (let index = 0; index < arguments.length; index += 1) {
-  const source = arguments[index];
-
-  if (!isPlainObject(source)) {
-    continue;
+  if (!target || typeof target.closest !== 'function') {
+    return;
   }
 
-  for (const key of Object.keys(source)) {
-    output[key] = cloneValue(source[key]);
+  const row = target.closest('.issue-row');
+
+  if (!row) {
+    return;
   }
-}
 
-return output;
+  const radio = row.querySelector('.issue-select-radio');
 
-}
+  if (!radio) {
+    return;
+  }
 
-function serializeComparable(value) {
-try {
-return JSON.stringify(value);
-} catch (error) {
-return '';
-}
-}
+  radio.checked = true;
+  setSelectedIssueNumber(radio.value);
+});
 
-function valuesEqual(leftValue, rightValue) {
-return serializeComparable(leftValue) === serializeComparable(rightValue);
-}
+dom.selectedTargetFileInput.addEventListener('input', function onSelectedTargetFileInput() {
+  runtimeState.dirty.targetFile = true;
+});
 
-function nowIsoString() {
-return new Date().toISOString();
-}
+dom.selectIssueButton.addEventListener('click', function onSelectIssueClick() {
+  void withErrorHandling(applyIssueSelection, 'Failed to apply selected issue.');
+});
 
-function collapseInlineWhitespace(value) {
-return coerceText(value).replace(/\s+/g, ' ').trim();
-}
-
-function normalizeMultilineText(value) {
-return coerceText(value)
-.replace(/\r\n/g, '\n')
-.replace(/\r/g, '\n')
-.trim();
-}
-
-function safeJsonStringify(value, spacing) {
-const indentation = Number.isFinite(Number(spacing))
-? Math.max(0, Math.trunc(Number(spacing)))
-: 2;
-
-try {
-  return JSON.stringify(value, null, indentation);
-} catch (error) {
-  return JSON.stringify({
-    error: 'JSON_SERIALIZATION_FAILED',
-    message: error && error.message ? error.message : String(error)
-  }, null, indentation);
-}
+dom.buildDesignArtifactButton.addEventListener('click', function onBuildDesignArtifactClick() {
+  void withErrorHandling(buildDesignArtifact, 'Failed to build design artifact.');
+});
 
 }
 
-function createPopupError(code, message, details) {
-const error = new Error(normalizeString(message) || 'Popup error.');
-error.name = 'MAOEPopupError';
-error.code = normalizeString(code) || (ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR');
-error.details = isPlainObject(details) ? cloneValue(details) : createNullObject();
-error.isPopupError = true;
-return error;
-}
+function bindStageArtifactControls() {
+const dom = getDom();
 
-function isPopupError(error) {
-return !!(error && typeof error === 'object' && error.isPopupError === true);
-}
+dom.probeActiveTabButton.addEventListener('click', function onProbeActiveTabClick() {
+  void withErrorHandling(probeActiveTab, 'Failed to probe active tab.');
+});
 
-function normalizePopupError(error, fallbackMessage, extraDetails) {
-if (isPopupError(error)) {
-return error;
-}
+dom.sendPromptToActiveTabButton.addEventListener('click', function onSendPromptToActiveTabClick() {
+  void withErrorHandling(function execute() {
+    return sendPromptToTab(null);
+  }, 'Failed to send prompt to the active tab.');
+});
 
-return createPopupError(
-  normalizeString(error && error.code) || (ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR'),
-  normalizeString(error && error.message) || normalizeString(fallbackMessage) || 'Popup error.',
-  mergePlainObjects(
-    stableObject(error && error.details),
-    stableObject(extraDetails)
-  )
-);
+dom.copyStageArtifactPromptButton.addEventListener('click', function onCopyStageArtifactPromptClick() {
+  void withErrorHandling(copyStageArtifactPrompt, 'Failed to copy prompt.');
+});
 
-}
+dom.buildManualPacketFromArtifactButton.addEventListener('click', function onBuildManualPacketFromArtifactClick() {
+  void withErrorHandling(buildCurrentManualPacket, 'Failed to build manual packet from artifact.');
+});
 
-function createRequestId(prefix) {
-if (protocolHelpers && typeof protocolHelpers.generateRequestId === 'function') {
-try {
-return protocolHelpers.generateRequestId(prefix || 'popup');
-} catch (error) {
-}
-}
+dom.copyStageArtifactPacketButton.addEventListener('click', function onCopyStageArtifactPacketClick() {
+  void withErrorHandling(copyStageArtifactPacket, 'Failed to copy packet.');
+});
 
-const normalizedPrefix = normalizeLowerString(prefix) || 'popup';
-return normalizedPrefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+dom.copyStageArtifactBothButton.addEventListener('click', function onCopyStageArtifactBothClick() {
+  void withErrorHandling(copyStageArtifactBoth, 'Failed to copy prompt and packet.');
+});
 
 }
+
+async function probeTab(tabId) {
+return runBusy('probeTab', 'Probing AI tab...', async function runProbeTab() {
+  const response = await sendBackgroundMessage(MESSAGE_TYPES.CONTENT_PROBE, {
+    tabId: normalizeIntegerOrNull(tabId),
+    reason: 'popup_probe'
+  });
+
+  if (response && response.tabContext) {
+    updateTabContextLocal(response.tabContext);
+  }
+
+  renderTabContexts();
+  clearErrorBanner();
+  showStatus('success', 'Tab probe completed.');
+  announce('Tab probe completed.');
+  return response;
+});
+
+}
+
+function bindTabContextControls() {
+const dom = getDom();
+
+dom.refreshTabContextsButton.addEventListener('click', function onRefreshTabContextsClick() {
+  void withErrorHandling(refreshTabContexts, 'Failed to refresh AI tabs.');
+});
+
+dom.tabContextList.addEventListener('click', function onTabContextListClick(event) {
+  const target = event.target;
+
+  if (!target || typeof target.closest !== 'function') {
+    return;
+  }
+
+  const probeButton = target.closest('.tab-probe-button');
+  const sendPromptButton = target.closest('.tab-send-prompt-button');
+  const extractButton = target.closest('.tab-extract-button');
+
+  if (!probeButton && !sendPromptButton && !extractButton) {
+    return;
+  }
+
+  const sourceButton = probeButton || sendPromptButton || extractButton;
+  const tabId = normalizeIntegerOrNull(sourceButton && sourceButton.dataset && sourceButton.dataset.tabId);
+
+  if (probeButton) {
+    void withErrorHandling(function execute() {
+      return probeTab(tabId);
+    }, 'Failed to probe AI tab.');
+    return;
+  }
+
+  if (sendPromptButton) {
+    void withErrorHandling(function execute() {
+      return sendPromptToTab(tabId);
+    }, 'Failed to send prompt to AI tab.');
+    return;
+  }
+
+  if (extractButton) {
+    void withErrorHandling(function execute() {
+      return extractLatestResponse(tabId, getDom().manualResponseAutoSubmitCheckbox.checked);
+    }, 'Failed to extract latest AI response.');
+  }
+});
+
+}
+
+function bindEventLogControls() {
+const dom = getDom();
+
+dom.refreshEventLogButton.addEventListener('click', function onRefreshEventLogClick() {
+  void withErrorHandling(function execute() {
+    return refreshEventLog({
+      successText: 'Event log refreshed.'
+    });
+  }, 'Failed to refresh event log.');
+});
+
+dom.showDebugLogCheckbox.addEventListener('change', function onShowDebugLogChange() {
+  updateShowDebugLog(dom.showDebugLogCheckbox.checked, {
+    persist: true
+  });
+});
+
+}
+
+function bindSettingsControls() {
+const dom = getDom();
+
+dom.settingsForm.addEventListener('submit', function onSettingsSubmit(event) {
+  event.preventDefault();
+
+  const submitter = event.submitter && event.submitter.id ? event.submitter.id : '';
+
+  if (submitter === 'save-github-settings-button') {
+    void withErrorHandling(function execute() {
+      return saveGithubSettings(false, false);
+    }, 'Failed to save GitHub settings.');
+    return;
+  }
+
+  void withErrorHandling(function execute() {
+    return saveGithubSettings(false, true);
+  }, 'Failed to save settings.');
+});
+
+dom.validateGitHubButton.addEventListener('click', function onValidateGitHubClick() {
+  void withErrorHandling(validateGitHubToken, 'Failed to validate GitHub token.');
+});
+
+dom.clearGitHubTokenButton.addEventListener('click', function onClearGitHubTokenClick() {
+  void withErrorHandling(clearGitHubToken, 'Failed to clear GitHub token.');
+});
+
+dom.reloadBootstrapButton.addEventListener('click', function onReloadBootstrapClick() {
+  void withErrorHandling(function execute() {
+    return refreshBootstrap({
+      successText: 'Extension state refreshed.'
+    });
+  }, 'Failed to reload extension state.');
+});
+
+dom.settingsShowDebugLogCheckbox.addEventListener('change', function onSettingsShowDebugLogChange() {
+  updateShowDebugLog(dom.settingsShowDebugLogCheckbox.checked, {
+    persist: true
+  });
+});
+
+dom.settingsIncludeIssueBodyCheckbox.addEventListener('change', function onIncludeIssueBodyChange() {
+  updateTransientPreferences({
+    includeIssueBody: dom.settingsIncludeIssueBodyCheckbox.checked
+  }, {
+    persist: true
+  });
+});
+
+dom.settingsIncludeTreeCheckbox.addEventListener('change', function onIncludeTreeChange() {
+  updateTransientPreferences({
+    includeTree: dom.settingsIncludeTreeCheckbox.checked
+  }, {
+    persist: true
+  });
+});
+
+}
+
+function bindManualHubControls() {
+const dom = getDom();
+
+dom.buildManualPacketButton.addEventListener('click', function onBuildManualPacketClick() {
+  void withErrorHandling(buildCurrentManualPacket, 'Failed to build manual packet.');
+});
+
+dom.copyManualPacketButton.addEventListener('click', function onCopyManualPacketClick() {
+  void withErrorHandling(copyManualPacket, 'Failed to copy manual packet.');
+});
+
+dom.validateManualPacketButton.addEventListener('click', function onValidateManualPacketClick() {
+  void withErrorHandling(validateManualPacket, 'Failed to validate manual packet.');
+});
+
+dom.copyManualHubPacketButton.addEventListener('click', function onCopyManualHubPacketClick() {
+  void withErrorHandling(copyManualPacket, 'Failed to copy outgoing packet.');
+});
+
+dom.manualHubPacketTypeSelect.addEventListener('change', function onManualHubPacketTypeChange() {
+  runtimeState.manualHub.lastPacketType = normalizeString(dom.manualHubPacketTypeSelect.value);
+  runtimeState.dirty.manualPacket = true;
+
+  void persistManualHubState({
+    lastPacketType: runtimeState.manualHub.lastPacketType,
+    lastPacketText: coerceText(dom.manualHubPacketTextarea.value),
+    clipboardFormat: runtimeState.manualHub.clipboardFormat
+  });
+});
+
+dom.manualHubPacketTextarea.addEventListener('input', function onManualHubPacketInput() {
+  updateManualPacketText(dom.manualHubPacketTextarea.value, {
+    persist: true,
+    dirty: true
+  });
+});
+
+dom.manualResponseTextarea.addEventListener('input', function onManualResponseInput() {
+  updateManualResponseText(dom.manualResponseTextarea.value, {
+    persist: true,
+    dirty: true
+  });
+});
+
+dom.extractFromActiveTabButton.addEventListener('click', function onExtractFromActiveTabClick() {
+  void withErrorHandling(function execute() {
+    return extractLatestResponse(null, dom.manualResponseAutoSubmitCheckbox.checked);
+  }, 'Failed to extract latest response from the active tab.');
+});
+
+dom.previewManualResponseButton.addEventListener('click', function onPreviewManualResponseClick() {
+  void withErrorHandling(previewManualResponse, 'Failed to preview manual response.');
+});
+
+dom.submitManualResponseButton.addEventListener('click', function onSubmitManualResponseClick() {
+  void withErrorHandling(submitManualResponse, 'Failed to submit manual response.');
+});
+
+dom.submitManualResponseConfirmButton.addEventListener('click', function onSubmitManualResponseConfirmClick() {
+  void withErrorHandling(submitManualResponse, 'Failed to apply manual response to workflow.');
+});
+
+dom.manualApplyStageStateButton.addEventListener('click', function onManualApplyStageStateClick() {
+  void withErrorHandling(applyManualStageState, 'Failed to apply manual stage/status.');
+});
+
+dom.manualMarkReadyButton.addEventListener('click', function onManualMarkReadyClick() {
+  void withErrorHandling(function execute() {
+    return markCurrentStageStatus(STATUS_READY);
+  }, 'Failed to mark the workflow ready.');
+});
+
+dom.manualMarkInProgressButton.addEventListener('click', function onManualMarkInProgressClick() {
+  void withErrorHandling(function execute() {
+    return markCurrentStageStatus(STATUS_IN_PROGRESS);
+  }, 'Failed to mark the workflow in progress.');
+});
+
+dom.manualMarkAwaitHumanButton.addEventListener('click', function onManualMarkAwaitHumanClick() {
+  void withErrorHandling(function execute() {
+    return markCurrentStageStatus(STATUS_AWAITING_HUMAN);
+  }, 'Failed to mark the workflow as awaiting human action.');
+});
+
+dom.manualMarkApprovedButton.addEventListener('click', function onManualMarkApprovedClick() {
+  void withErrorHandling(function execute() {
+    return markCurrentStageStatus(STATUS_APPROVED);
+  }, 'Failed to mark the workflow approved.');
+});
+
+dom.manualMarkRejectedButton.addEventListener('click', function onManualMarkRejectedClick() {
+  void withErrorHandling(function execute() {
+    return markCurrentStageStatus(STATUS_REJECTED);
+  }, 'Failed to mark the workflow rejected.');
+});
+
+dom.manualMarkCompletedButton.addEventListener('click', function onManualMarkCompletedClick() {
+  void withErrorHandling(function execute() {
+    return markCurrentStageStatus(STATUS_COMPLETED);
+  }, 'Failed to mark the workflow completed.');
+});
+
+dom.manualClearErrorButton.addEventListener('click', function onManualClearErrorClick() {
+  void withErrorHandling(clearWorkflowError, 'Failed to clear the workflow error.');
+});
+
+}
+
+function bindAllControls() {
+if (runtimeState.bindingsInstalled === true) {
+  return;
+}
+
+bindGlobalControls();
+bindTabButtons();
+bindWorkflowControls();
+bindRepositoryControls();
+bindIssueControls();
+bindStageArtifactControls();
+bindTabContextControls();
+bindEventLogControls();
+bindSettingsControls();
+bindManualHubControls();
+
+runtimeState.bindingsInstalled = true;
+
+}
+
+async function initializePopup() {
+ensureRuntimeState();
+
+if (runtimeState.initialized === true) {
+  renderAll();
+  return runtimeState;
+}
+
+if (runtimeState.initializingPromise) {
+  return runtimeState.initializingPromise;
+}
+
+runtimeState.initializingPromise = (async function runInitializePopup() {
+  getDom();
+  bindAllControls();
+  installRuntimeMessageListener();
+  clearErrorBanner();
+  renderAll();
+  showStatus('info', 'Loading extension state...');
+
+  if (typeof storage.initializeDefaults === 'function') {
+    try {
+      await storage.initializeDefaults({
+        area: STORAGE_AREA_LOCAL
+      });
+    } catch (error) {
+      logger.warn('Failed to initialize popup storage defaults.', {
+        message: error && error.message ? error.message : String(error)
+      });
+    }
+  }
+
+  runtimeState.transientPreferences = await loadTransientPreferences();
+  renderSettings();
+  renderManualHub();
+
+  await refreshBootstrap({
+    statusText: 'Loading extension state...',
+    successText: 'Extension state loaded.',
+    announceText: 'Extension state loaded.'
+  });
+
+  initializeFormDefaultsFromBootstrap();
+  renderAll();
+
+  runtimeState.initialized = true;
+  return runtimeState;
+}()).catch(function handleInitializationError(error) {
+  const normalized = normalizePopupError(error, 'Failed to initialize popup.');
+  runtimeState.lastError = cloneValue(normalized);
+  showErrorBanner(normalized);
+  showStatus('error', normalized.message);
+  announce(normalized.message);
+  logger.error('Popup initialization failed.', {
+    code: normalized.code,
+    message: normalized.message,
+    details: cloneValue(normalized.details)
+  });
+  throw normalized;
+}).finally(function clearInitializingPromise() {
+  runtimeState.initializingPromise = null;
+});
+
+return runtimeState.initializingPromise;
+
+}
+
+function startPopup() {
+void initializePopup().catch(function ignoreInitializationError() {
+});
+}
+
+const popupApi = deepFreeze({
+initialize: initializePopup,
+refreshBootstrap: refreshBootstrap,
+refreshWorkflow: refreshWorkflow,
+refreshEventLog: refreshEventLog,
+loadIssues: loadIssues,
+loadRepositoryTree: loadRepositoryTree,
+applyIssueSelection: applyIssueSelection,
+buildCurrentArtifact: buildCurrentArtifact,
+buildDesignArtifact: buildDesignArtifact,
+advanceStage: advanceStage,
+resetWorkflow: resetWorkflow,
+clearWorkflowError: clearWorkflowError,
+createPullRequestNow: createPullRequestNow,
+previewManualResponseResult: previewManualResponseResult,
+getRuntimeState: function getRuntimeState() {
+  return cloneValue(runtimeState);
+}
+});
+
+root.registerValue('popup', popupApi, {
+overwrite: false,
+freeze: false,
+clone: false
+});
+
+if (globalScope.document && globalScope.document.readyState === 'loading') {
+globalScope.document.addEventListener('DOMContentLoaded', startPopup, {
+  once: true
+});
+} else {
+startPopup();
+}
+
+}(typeof globalThis !== 'undefined'
+  ? globalThis
+  : (typeof self !== 'undefined'
+    ? self
+    : (typeof window !== 'undefined' ? window : this))));
