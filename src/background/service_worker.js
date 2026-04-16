@@ -438,3 +438,428 @@ broadcastMessage(createBroadcastMessage(
 });
 
 }
+async function handleStateStoreEvent(event) {
+const normalizedEvent = isPlainObject(event) ? event : createNullObject();
+const type = normalizeString(normalizedEvent.type);
+
+if (!type) {
+  return;
+}
+
+const workflow = extractWorkflowFromStateEvent(normalizedEvent);
+const payload = isPlainObject(normalizedEvent.payload) ? normalizedEvent.payload : createNullObject();
+
+if (type === normalizeString(STATE_STORE_EVENT_TYPES.EVENT_LOG_APPENDED || 'EVENT_LOG_APPENDED')) {
+  broadcastLogAppended(type, payload.entry);
+  return;
+}
+
+if (type === normalizeString(STATE_STORE_EVENT_TYPES.ERROR_SET || 'ERROR_SET')) {
+  broadcastStateChanged(type, workflow, {
+    summary: stableObject(payload.summary),
+    meta: stableObject(payload.meta)
+  });
+  broadcastError(type, extractErrorRecordFromStateEvent(normalizedEvent));
+  return;
+}
+
+if (type === normalizeString(STATE_STORE_EVENT_TYPES.ERROR_CLEARED || 'ERROR_CLEARED')) {
+  broadcastStateChanged(type, workflow, {
+    summary: stableObject(payload.summary),
+    meta: stableObject(payload.meta)
+  });
+  return;
+}
+
+if (type === normalizeString(STATE_STORE_EVENT_TYPES.INITIALIZED || 'INITIALIZED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.REFRESHED || 'REFRESHED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.WORKFLOW_CHANGED || 'WORKFLOW_CHANGED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.ISSUE_SELECTED || 'ISSUE_SELECTED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.PROVIDERS_CHANGED || 'PROVIDERS_CHANGED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.ACTIVE_PROVIDER_CHANGED || 'ACTIVE_PROVIDER_CHANGED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.HUMAN_ACTION_RECORDED || 'HUMAN_ACTION_RECORDED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.EXECUTOR_RESPONSE_RECORDED || 'EXECUTOR_RESPONSE_RECORDED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.AUDIT_RESULT_RECORDED || 'AUDIT_RESULT_RECORDED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.PULL_REQUEST_RECORDED || 'PULL_REQUEST_RECORDED')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.RESET || 'RESET')
+  || type === normalizeString(STATE_STORE_EVENT_TYPES.EXTERNAL_STORAGE_SYNC || 'EXTERNAL_STORAGE_SYNC')) {
+  broadcastStateChanged(type, workflow, {
+    summary: stableObject(payload.summary),
+    meta: stableObject(payload.meta),
+    source: normalizeString(payload.source || '')
+  });
+}
+
+}
+
+function installStateStoreSubscription() {
+if (runtimeState.stateStoreSubscriptionInstalled === true) {
+return;
+}
+
+if (typeof stateStore.subscribe !== 'function') {
+  return;
+}
+
+runtimeState.stateStoreUnsubscribe = stateStore.subscribe(function onStateStoreEvent(event) {
+  void handleStateStoreEvent(event);
+});
+runtimeState.stateStoreSubscriptionInstalled = true;
+
+}
+
+async function initializeServiceWorker(options) {
+ensureRuntimeState();
+
+const source = isPlainObject(options) ? options : createNullObject();
+const reason = normalizeString(source.reason || source.source) || 'initialize';
+
+if (runtimeState.initialized === true && normalizeBoolean(source.forceRefresh, false) !== true) {
+  return getBootstrapState();
+}
+
+if (runtimeState.initializingPromise && normalizeBoolean(source.forceRefresh, false) !== true) {
+  return runtimeState.initializingPromise;
+}
+
+const promise = (async function initializeInternal() {
+  const bootstrap = await ensureInitialized({
+    forceRefresh: normalizeBoolean(source.forceRefresh, false),
+    syncSelectedProvidersFromSettings: normalizeBoolean(source.syncSelectedProvidersFromSettings, false)
+  });
+
+  installStateStoreSubscription();
+
+  runtimeState.initialized = true;
+  runtimeState.bootCount += 1;
+  runtimeState.readyAt = nowIsoString();
+  runtimeState.lastInitReason = reason;
+  runtimeState.lastDashboard = null;
+  runtimeState.lastError = null;
+
+  await appendEventLog('Service worker initialized.', 'SERVICE_WORKER_INITIALIZED', {
+    reason: reason,
+    bootCount: runtimeState.bootCount
+  }, 'debug');
+
+  return bootstrap;
+}());
+
+runtimeState.initializingPromise = promise;
+
+try {
+  return await promise;
+} catch (error) {
+  runtimeState.lastError = normalizeServiceWorkerError(error, 'Service worker initialization failed.');
+  throw runtimeState.lastError;
+} finally {
+  runtimeState.initializingPromise = null;
+}
+
+}
+
+async function ensureInitialized(options) {
+if (typeof orchestrator.ensureInitialized === 'function') {
+return orchestrator.ensureInitialized(options);
+}
+
+if (typeof stateStore.ensureInitialized === 'function') {
+  return stateStore.ensureInitialized(options);
+}
+
+return createNullObject();
+
+}
+
+async function getBootstrapState(options) {
+if (typeof orchestrator.getBootstrapState === 'function') {
+return orchestrator.getBootstrapState(options);
+}
+
+if (typeof stateStore.getBootstrapState === 'function') {
+  return stateStore.getBootstrapState(options);
+}
+
+return createNullObject();
+
+}
+
+async function getWorkflowState(options) {
+if (typeof orchestrator.getWorkflowState === 'function') {
+return orchestrator.getWorkflowState(options);
+}
+
+if (typeof stateStore.getWorkflowState === 'function') {
+  return stateStore.getWorkflowState(options);
+}
+
+return normalizeWorkflowStateFromAny(DEFAULTS.workflow);
+
+}
+
+async function getEventLog(options) {
+if (typeof orchestrator.getEventLog === 'function') {
+return orchestrator.getEventLog(options);
+}
+
+if (typeof stateStore.getEventLog === 'function') {
+  return stateStore.getEventLog(options);
+}
+
+return [];
+
+}
+
+function getLastSubmission() {
+if (typeof orchestrator.getLastSubmission === 'function') {
+  try {
+    return orchestrator.getLastSubmission();
+  } catch (error) {
+  }
+}
+
+return null;
+
+}
+
+async function routeMessage(request, sender) {
+const messageMeta = normalizeIncomingMessage(request, sender);
+await initializeServiceWorker({
+source: 'message',
+syncSelectedProvidersFromSettings: false
+});
+return handleMessage(messageMeta);
+}
+
+function handleOnMessage(request, sender, sendResponse) {
+if (request && request.__maoeBroadcast === true) {
+return false;
+}
+
+if (!request || !normalizeString(request.type || request.messageType)) {
+  return false;
+}
+
+void routeMessage(request, sender).then(function onResolved(data) {
+  sendResponse(createOkResponse(normalizeIncomingMessage(request, sender), data));
+}).catch(function onRejected(error) {
+  sendResponse(createErrorResponse(normalizeIncomingMessage(request, sender), error));
+});
+
+return true;
+
+}
+
+function handleTabUpdated(tabId, changeInfo, tab) {
+const normalizedTabId = normalizeIntegerOrNull(tabId);
+
+if (normalizedTabId === null) {
+  return;
+}
+
+const registry = ensureTabRegistry();
+const existing = hasOwn(registry, String(normalizedTabId))
+  ? registry[String(normalizedTabId)]
+  : null;
+const url = normalizeString(changeInfo && changeInfo.url || tab && tab.url);
+const detected = detectSiteFromUrl(url);
+
+if (!existing && !detected.providerId) {
+  return;
+}
+
+const nextContext = normalizeTabContext(mergePlainObjects(
+  stableObject(existing),
+  {
+    tabId: normalizedTabId,
+    windowId: normalizeIntegerOrNull(tab && tab.windowId),
+    title: normalizeString(tab && tab.title),
+    url: url || normalizeString(existing && existing.url),
+    siteId: detected.siteId || normalizeString(existing && existing.siteId),
+    providerId: detected.providerId || normalizeString(existing && existing.providerId),
+    displayName: detected.displayName || normalizeString(existing && existing.displayName),
+    status: normalizeString(changeInfo && changeInfo.status || tab && tab.status || existing && existing.status),
+    lastSeenAt: nowIsoString()
+  }
+));
+
+registry[String(normalizedTabId)] = cloneValue(nextContext);
+
+}
+
+function installChromeListeners() {
+if (runtimeState.listenersInstalled === true) {
+return;
+}
+
+runtimeState.listenersInstalled = true;
+
+if (typeof chrome !== 'undefined'
+  && chrome.runtime
+  && chrome.runtime.onInstalled
+  && typeof chrome.runtime.onInstalled.addListener === 'function') {
+  chrome.runtime.onInstalled.addListener(function onInstalled(details) {
+    void initializeServiceWorker({
+      source: 'onInstalled',
+      reason: normalizeString(details && details.reason) || 'onInstalled'
+    });
+  });
+}
+
+if (typeof chrome !== 'undefined'
+  && chrome.runtime
+  && chrome.runtime.onStartup
+  && typeof chrome.runtime.onStartup.addListener === 'function') {
+  chrome.runtime.onStartup.addListener(function onStartup() {
+    void initializeServiceWorker({
+      source: 'onStartup',
+      reason: 'onStartup'
+    });
+  });
+}
+
+if (typeof chrome !== 'undefined'
+  && chrome.runtime
+  && chrome.runtime.onMessage
+  && typeof chrome.runtime.onMessage.addListener === 'function') {
+  chrome.runtime.onMessage.addListener(handleOnMessage);
+}
+
+if (typeof chrome !== 'undefined'
+  && chrome.tabs
+  && chrome.tabs.onRemoved
+  && typeof chrome.tabs.onRemoved.addListener === 'function') {
+  chrome.tabs.onRemoved.addListener(function onTabRemoved(tabId) {
+    removeTabContext(tabId);
+  });
+}
+
+if (typeof chrome !== 'undefined'
+  && chrome.tabs
+  && chrome.tabs.onUpdated
+  && typeof chrome.tabs.onUpdated.addListener === 'function') {
+  chrome.tabs.onUpdated.addListener(handleTabUpdated);
+}
+
+try {
+  globalScope.addEventListener('install', function onInstall() {
+    void initializeServiceWorker({
+      source: 'install',
+      reason: 'install'
+    });
+  });
+} catch (error) {
+}
+
+try {
+  globalScope.addEventListener('activate', function onActivate() {
+    void initializeServiceWorker({
+      source: 'activate',
+      reason: 'activate'
+    });
+  });
+} catch (error) {
+}
+
+}
+
+const api = {
+initialize: initializeServiceWorker,
+ensureInitialized: initializeServiceWorker,
+routeMessage: routeMessage,
+getBootstrapState: getBootstrapState,
+getWorkflowState: getWorkflowState,
+getEventLog: getEventLog,
+getTabContexts: getTabContexts,
+getTabContext: getTabContext,
+clearCaches: clearCaches,
+probeTab: probeTab,
+fillPromptInTab: fillPromptInTab,
+extractLatestResponseFromTab: extractLatestResponseFromTab,
+buildManualPacket: buildManualPacket,
+saveGithubSettings: saveGithubSettings,
+helpers: deepFreeze({
+normalizeIncomingMessage: normalizeIncomingMessage,
+createOkResponse: createOkResponse,
+createErrorResponse: createErrorResponse,
+createBroadcastMessage: createBroadcastMessage,
+detectSiteFromUrl: detectSiteFromUrl,
+normalizeTabContext: normalizeTabContext,
+upsertTabContextFromSender: upsertTabContextFromSender,
+updateTabCapture: updateTabCapture,
+buildIssueListCacheKey: buildIssueListCacheKey,
+buildTreeCacheKey: buildTreeCacheKey,
+normalizeIssueListQuerySnapshot: normalizeIssueListQuerySnapshot,
+normalizeServiceWorkerError: normalizeServiceWorkerError,
+createOrchestratorError: createOrchestratorError,
+isServiceWorkerError: isServiceWorkerError,
+buildRepositoryDescriptor: buildRepositoryDescriptor,
+buildRepositoryUrls: buildRepositoryUrls,
+normalizeIssueInput: normalizeIssueInput,
+normalizeIssueRef: normalizeIssueRef,
+normalizePullRequestRef: normalizePullRequestRef,
+normalizeWorkflowStateFromAny: normalizeWorkflowStateFromAny,
+normalizeSelectedProviderIds: normalizeSelectedProviderIds,
+resolveProviderForRole: resolveProviderForRole,
+inferRoleFromStage: inferRoleFromStage,
+nextStageAfter: nextStageAfter,
+normalizeTaskFilePath: normalizeTaskFilePath,
+normalizeGitRef: normalizeGitRef,
+normalizeReviewDecision: normalizeReviewDecision,
+normalizeLastParsedPayloadRecord: normalizeLastParsedPayloadRecord,
+buildSuggestedWorkingBranch: buildSuggestedWorkingBranch,
+previewPayloadForStage: previewPayloadForStage,
+extractTargetFileFromDesignText: orchestrator.helpers && orchestrator.helpers.extractTargetFileFromDesignText
+? orchestrator.helpers.extractTargetFileFromDesignText
+: function fallbackExtractTargetFile(text, options) {
+return '';
+},
+parseExecutionSubmission: orchestrator.helpers && orchestrator.helpers.parseExecutionSubmission
+? orchestrator.helpers.parseExecutionSubmission
+: function fallbackParseExecution() {
+return {
+ok: false,
+errors: []
+};
+},
+parseAuditSubmission: orchestrator.helpers && orchestrator.helpers.parseAuditSubmission
+? orchestrator.helpers.parseAuditSubmission
+: function fallbackParseAudit() {
+return {
+ok: false,
+errors: []
+};
+},
+parsePullRequestReference: orchestrator.helpers && orchestrator.helpers.parsePullRequestReference
+? orchestrator.helpers.parsePullRequestReference
+: function fallbackParsePullRequestReference() {
+return null;
+}
+})
+};
+
+installChromeListeners();
+void initializeServiceWorker({
+source: 'module_load',
+reason: 'module_load'
+});
+
+try {
+logger.debug('Service worker module registered.', {
+protocolVersion: DEFAULT_PROTOCOL_VERSION,
+messageTypeCount: Object.keys(MESSAGE_TYPES).length,
+providerCount: PROVIDER_IDS.length
+});
+} catch (error) {
+}
+
+root.registerValue('service_worker', deepFreeze(api), {
+overwrite: false,
+freeze: false,
+clone: false
+});
+}(typeof globalThis !== 'undefined'
+? globalThis
+: (typeof self !== 'undefined'
+? self
+: (typeof window !== 'undefined' ? window : this))));
