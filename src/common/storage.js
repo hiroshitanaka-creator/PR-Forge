@@ -181,7 +181,8 @@
   }, Object.create(null)));
   KNOWN_DEFAULTS_BY_AREA[STORAGE_AREAS.SESSION] = Object.freeze({
     ui_state: cloneValue(DEFAULTS.ui),
-    manual_bridge_draft: cloneValue(DEFAULTS.manualHub)
+    manual_bridge_draft: cloneValue(DEFAULTS.manualHub),
+    [STORAGE_KEYS.GITHUB_AUTH]: cloneValue(DEFAULTS.githubAuth)
   });
 
   const memoryBuckets = Object.create(null);
@@ -1214,8 +1215,21 @@
     return merge(STORAGE_KEYS.SETTINGS, patch, options);
   }
 
+  function withGitHubAuthArea(options) {
+    const base = ensureObject(options);
+    if (hasOwn(base, 'area') && normalizeString(base.area)) {
+      return base;
+    }
+    const scoped = Object.create(null);
+    for (const key of Object.keys(base)) {
+      scoped[key] = base[key];
+    }
+    scoped.area = STORAGE_AREAS.SESSION;
+    return scoped;
+  }
+
   async function getGitHubAuth(options) {
-    return read(STORAGE_KEYS.GITHUB_AUTH, options);
+    return read(STORAGE_KEYS.GITHUB_AUTH, withGitHubAuthArea(options));
   }
 
   async function saveGitHubAuth(value, options) {
@@ -1226,7 +1240,7 @@
         configurable: true,
         writable: true
       }
-    }), options).then(function mapResult(result) {
+    }), withGitHubAuthArea(options)).then(function mapResult(result) {
       return result[STORAGE_KEYS.GITHUB_AUTH];
     });
   }
@@ -1240,7 +1254,7 @@
         configurable: true,
         writable: true
       }
-    }), options);
+    }), withGitHubAuthArea(options));
     return auth;
   }
 

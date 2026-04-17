@@ -41,7 +41,7 @@
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
         "content/common/human_hub_bridge.js",
-        "content/chatgpt.js"
+        "content/chatgpt_content.js"
       ],
       "run_at": "document_idle"
     },

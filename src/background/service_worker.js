@@ -1,3 +1,231 @@
+importScripts(
+  '../common/namespace.js',
+  '../common/constants.js',
+  '../common/logger.js',
+  '../common/storage.js',
+  '../common/protocol.js',
+  '../common/parsers/fenced_block_parser.js',
+  '../common/parsers/ai_payload_parser.js',
+  'github_api.js',
+  'github_issue_service.js',
+  'github_repo_service.js',
+  'github_pr_service.js',
+  'state_store.js',
+  'orchestrator.js'
+);
+
+const root = self.MAOE;
+
+if (!root || typeof root.require !== 'function') {
+  throw new Error('[MAOE] namespace.js failed to initialize.');
+}
+
+const constants = root.has('constants') ? root.require('constants') : Object.create(null);
+const protocol = root.has('protocol') ? root.require('protocol') : Object.create(null);
+const stateStore = root.has('state_store') ? root.require('state_store') : Object.create(null);
+const orchestrator = root.has('orchestrator') ? root.require('orchestrator') : Object.create(null);
+const loggerModule = root.has('logger') ? root.require('logger') : null;
+const logger = (loggerModule && typeof loggerModule.createScope === 'function')
+  ? loggerModule.createScope('service_worker')
+  : (loggerModule || { debug() {}, info() {}, warn() {}, error() {} });
+
+const DEFAULTS = constants.DEFAULTS || Object.create(null);
+const ERROR_CODES = constants.ERROR_CODES || Object.create(null);
+const CONSTANT_HELPERS = constants.helpers || Object.create(null);
+const MESSAGING = constants.MESSAGING || Object.create(null);
+const MESSAGE_TYPES = MESSAGING.TYPES || Object.create(null);
+const RESPONSE_STATUS = MESSAGING.RESPONSE_STATUS || Object.create(null);
+const DEFAULT_RESPONSE_STATUS_OK = RESPONSE_STATUS.OK || 'ok';
+const DEFAULT_RESPONSE_STATUS_ERROR = RESPONSE_STATUS.ERROR || 'error';
+
+const util = root.util || Object.create(null);
+
+function createNullObject() {
+  return Object.create(null);
+}
+
+function nowIsoString() {
+  return new Date().toISOString();
+}
+
+const isPlainObject = typeof util.isPlainObject === 'function'
+  ? util.isPlainObject
+  : function isPlainObjectFallback(value) {
+    if (value === null || typeof value !== 'object') {
+      return false;
+    }
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+  };
+
+const hasOwn = typeof util.hasOwn === 'function'
+  ? util.hasOwn
+  : function hasOwnFallback(target, key) {
+    return target !== null && typeof target === 'object' && Object.prototype.hasOwnProperty.call(target, key);
+  };
+
+const cloneValue = typeof util.cloneValue === 'function'
+  ? util.cloneValue
+  : function cloneValueFallback(value) {
+    if (value === null || typeof value !== 'object') {
+      return value;
+    }
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (error) {
+      return value;
+    }
+  };
+
+const deepFreeze = typeof util.deepFreeze === 'function'
+  ? util.deepFreeze
+  : function deepFreezeFallback(value) {
+    return value;
+  };
+
+const freezeClone = typeof util.freezeClone === 'function'
+  ? util.freezeClone
+  : function freezeCloneFallback(value) {
+    return deepFreeze(cloneValue(value));
+  };
+
+const mergePlainObjects = typeof util.mergePlainObjects === 'function'
+  ? util.mergePlainObjects
+  : function mergePlainObjectsFallback() {
+    const output = Object.create(null);
+    for (const source of arguments) {
+      if (!isPlainObject(source)) {
+        continue;
+      }
+      for (const key of Object.keys(source)) {
+        output[key] = source[key];
+      }
+    }
+    return output;
+  };
+
+const stableObject = typeof util.stableObject === 'function'
+  ? util.stableObject
+  : function stableObjectFallback(value) {
+    return isPlainObject(value) ? cloneValue(value) : createNullObject();
+  };
+
+const coerceText = typeof util.coerceText === 'function'
+  ? util.coerceText
+  : function coerceTextFallback(value) {
+    if (value === null || typeof value === 'undefined') {
+      return '';
+    }
+    return typeof value === 'string' ? value : String(value);
+  };
+
+function normalizeString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeLowerString(value) {
+  return normalizeString(value).toLowerCase();
+}
+
+function normalizeBoolean(value, fallbackValue) {
+  if (value === true || value === false) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') {
+      return true;
+    }
+    if (normalized === 'false' || normalized === '0') {
+      return false;
+    }
+  }
+  return fallbackValue === true;
+}
+
+function normalizeIntegerOrNull(value) {
+  if (value === null || typeof value === 'undefined' || value === '') {
+    return null;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.trunc(numeric);
+}
+
+function normalizePositiveInteger(value, fallbackValue) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1) {
+    return Math.max(1, Math.trunc(Number(fallbackValue) || 1));
+  }
+  return Math.max(1, Math.trunc(numeric));
+}
+
+function normalizeNonNegativeInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return 0;
+  }
+  return Math.trunc(numeric);
+}
+
+function createRequestId(prefix) {
+  const safePrefix = normalizeString(prefix) || 'request';
+  const time = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 10);
+  return safePrefix + ':' + time + ':' + random;
+}
+
+function createOrchestratorError(code, message, details) {
+  const error = new Error(normalizeString(message) || 'Service worker error.');
+  error.name = 'MAOEServiceWorkerError';
+  error.code = normalizeString(code) || (ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR');
+  error.details = isPlainObject(details) ? cloneValue(details) : createNullObject();
+  return error;
+}
+
+function normalizeServiceWorkerError(error, fallbackMessage, context) {
+  const fallback = normalizeString(fallbackMessage) || 'Service worker request failed.';
+  const ctx = isPlainObject(context) ? context : createNullObject();
+
+  if (error && typeof error === 'object') {
+    return {
+      code: normalizeString(error.code) || (ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR'),
+      message: normalizeString(error.message) || fallback,
+      details: isPlainObject(error.details)
+        ? mergePlainObjects(ctx, error.details)
+        : ctx
+    };
+  }
+
+  return {
+    code: ERROR_CODES.UNKNOWN_ERROR || 'UNKNOWN_ERROR',
+    message: normalizeString(error) || fallback,
+    details: ctx
+  };
+}
+
+function normalizeWorkflowStateFromAny(value) {
+  if (orchestrator && orchestrator.helpers
+    && typeof orchestrator.helpers.normalizeWorkflowStateFromAny === 'function') {
+    return orchestrator.helpers.normalizeWorkflowStateFromAny(value);
+  }
+  return cloneValue(isPlainObject(value) ? value : (DEFAULTS.workflow || createNullObject()));
+}
+
+const runtimeState = {
+  tabsById: Object.create(null),
+  lastBroadcastAt: ''
+};
+
+function ensureRuntimeState() {
+  if (!isPlainObject(runtimeState.tabsById)) {
+    runtimeState.tabsById = Object.create(null);
+  }
+  return runtimeState;
+}
+
 function createOkResponse(requestMeta, data, meta) {
 return deepFreeze({
 status: DEFAULT_RESPONSE_STATUS_OK,
@@ -186,7 +414,7 @@ return deepFreeze({
   lastProbeAt: normalizeString(source.lastProbeAt),
   lastOutputAt: normalizeString(source.lastOutputAt),
   lastOutputKind: normalizeString(source.lastOutputKind),
-  lastOutputLength: normalizePositiveInteger(source.lastOutputLength || 0, 1) - 1,
+  lastOutputLength: normalizeNonNegativeInteger(source.lastOutputLength),
   stageAtLastProbe: normalizeLowerString(source.stageAtLastProbe),
   ready: normalizeBoolean(source.ready, false)
 });
@@ -197,7 +425,7 @@ function upsertTabContextFromSender(sender, payload, options) {
 const sourcePayload = isPlainObject(payload) ? payload : createNullObject();
 const sourceOptions = isPlainObject(options) ? options : createNullObject();
 const tab = sender && sender.tab ? sender.tab : createNullObject();
-const tabId = normalizeIntegerOrNull(sourcePayload.tabId || tab.id);
+const tabId = normalizeIntegerOrNull(sourcePayload.tabId ?? tab.id);
 const existing = tabId === null
 ? createNullObject()
 : (hasOwn(ensureTabRegistry(), String(tabId)) ? ensureTabRegistry()[String(tabId)] : createNullObject());
@@ -492,6 +720,8 @@ return;
 function broadcastMessage(message, options) {
 const config = isPlainObject(options) ? options : createNullObject();
 const normalizedMessage = deepFreeze(cloneValue(message));
+const restrictToProviderId = normalizeLowerString(config.providerId);
+const restrictToTabId = normalizeIntegerOrNull(config.tabId);
 
 runtimeState.lastBroadcastAt = nowIsoString();
 
@@ -505,6 +735,14 @@ const contexts = getTabContexts();
 
 for (const context of contexts) {
   if (context.tabId === null) {
+    continue;
+  }
+
+  if (restrictToTabId !== null && context.tabId !== restrictToTabId) {
+    continue;
+  }
+
+  if (restrictToProviderId && context.providerId !== restrictToProviderId) {
     continue;
   }
 
@@ -667,3 +905,185 @@ return {
 };
 
 }
+
+const MESSAGE_DISPATCH_TABLE = Object.freeze({
+  [MESSAGE_TYPES.POPUP_GET_BOOTSTRAP]: function handleGetBootstrap() {
+    return typeof orchestrator.getBootstrapState === 'function'
+      ? orchestrator.getBootstrapState()
+      : getCachedBootstrapStateSync();
+  },
+  [MESSAGE_TYPES.POPUP_GET_WORKFLOW_STATE]: function handleGetWorkflow() {
+    return typeof orchestrator.getWorkflowState === 'function'
+      ? orchestrator.getWorkflowState()
+      : getCachedWorkflowStateSync();
+  },
+  [MESSAGE_TYPES.POPUP_GET_EVENT_LOG]: function handleGetEventLog(payload) {
+    if (typeof orchestrator.getEventLog === 'function') {
+      return orchestrator.getEventLog(payload);
+    }
+    return [];
+  },
+  [MESSAGE_TYPES.POPUP_LOAD_ISSUES]: function handleLoadIssues(payload) {
+    return orchestrator.loadIssues ? orchestrator.loadIssues(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_LOAD_REPO_TREE]: function handleLoadRepoTree(payload) {
+    return orchestrator.loadRepositoryTree ? orchestrator.loadRepositoryTree(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_SELECT_ISSUE]: function handleSelectIssue(payload) {
+    return orchestrator.selectIssue ? orchestrator.selectIssue(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_SUBMIT_HUMAN_PAYLOAD]: function handleSubmitPayload(payload) {
+    return orchestrator.submitHumanPayload ? orchestrator.submitHumanPayload(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_ADVANCE_STAGE]: function handleAdvanceStage(payload) {
+    return orchestrator.advanceStage ? orchestrator.advanceStage(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_RESET_WORKFLOW]: function handleResetWorkflow(payload) {
+    return orchestrator.resetWorkflow ? orchestrator.resetWorkflow(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_SAVE_GITHUB_SETTINGS]: function handleSaveGithubSettings(payload) {
+    if (typeof stateStore.updateGitHubAuth === 'function') {
+      const cached = typeof stateStore.getCachedGitHubAuth === 'function'
+        ? stateStore.getCachedGitHubAuth()
+        : null;
+      const normalized = normalizeAuthUpdatePayload(payload, cached);
+      if (!normalized.changed) {
+        return cached;
+      }
+      return stateStore.updateGitHubAuth(normalized.next);
+    }
+    return null;
+  },
+  [MESSAGE_TYPES.CONTENT_SITE_DETECTED]: function handleContentSiteDetected(payload, sender) {
+    return upsertTabContextFromSender(sender, payload, { probed: true });
+  },
+  [MESSAGE_TYPES.CONTENT_AI_OUTPUT_CAPTURED]: function handleContentOutputCaptured(payload, sender) {
+    const tabId = normalizeIntegerOrNull(payload && payload.tabId) || (sender && sender.tab && sender.tab.id);
+    const rawText = coerceText(payload && payload.rawText);
+    const kind = normalizeString(payload && payload.kind) || 'ai_output';
+    const captured = updateTabCapture(tabId, rawText, kind);
+    if (captured && typeof orchestrator.ingestContentCapture === 'function') {
+      try {
+        orchestrator.ingestContentCapture({ tabId: tabId, rawText: rawText, kind: kind, sender: sender });
+      } catch (error) {
+        logger.warn('Orchestrator rejected captured AI output.', normalizeServiceWorkerError(error, 'ingestContentCapture failed.', { tabId: tabId }));
+      }
+    }
+    return captured;
+  }
+});
+
+function resolveHandler(type) {
+  const normalizedType = normalizeString(type);
+  if (!normalizedType) {
+    return null;
+  }
+  return typeof MESSAGE_DISPATCH_TABLE[normalizedType] === 'function'
+    ? MESSAGE_DISPATCH_TABLE[normalizedType]
+    : null;
+}
+
+function handleRuntimeMessage(message, sender, sendResponse) {
+  const requestMeta = {
+    requestId: (message && normalizeString(message.requestId)) || createRequestId('req'),
+    type: message && normalizeString(message.type)
+  };
+
+  const handler = resolveHandler(requestMeta.type);
+
+  if (!handler) {
+    sendResponse(createErrorResponse(requestMeta, createOrchestratorError(
+      ERROR_CODES.MESSAGE_UNSUPPORTED || 'MESSAGE_UNSUPPORTED',
+      'Unsupported message type.',
+      { type: requestMeta.type }
+    )));
+    return false;
+  }
+
+  let result;
+  try {
+    result = handler(message && message.payload, sender);
+  } catch (error) {
+    sendResponse(createErrorResponse(requestMeta, error));
+    return false;
+  }
+
+  if (result && typeof result.then === 'function') {
+    result.then(
+      function onResolve(value) {
+        try {
+          sendResponse(createOkResponse(requestMeta, value));
+        } catch (error) {
+          logger.warn('Failed to deliver async response.', normalizeServiceWorkerError(error, 'sendResponse failed.', { type: requestMeta.type }));
+        }
+      },
+      function onReject(error) {
+        try {
+          sendResponse(createErrorResponse(requestMeta, error));
+        } catch (sendError) {
+          logger.warn('Failed to deliver async error.', normalizeServiceWorkerError(sendError, 'sendResponse failed.', { type: requestMeta.type }));
+        }
+      }
+    );
+    return true;
+  }
+
+  sendResponse(createOkResponse(requestMeta, result));
+  return false;
+}
+
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener(function onRuntimeMessage(message, sender, sendResponse) {
+    if (!isPlainObject(message)) {
+      return false;
+    }
+    if (sender && sender.tab && sender.tab.id) {
+      try {
+        upsertTabContextFromSender(sender, {}, {});
+      } catch (error) {
+      }
+    }
+    return handleRuntimeMessage(message, sender, sendResponse);
+  });
+}
+
+if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.onRemoved) {
+  chrome.tabs.onRemoved.addListener(function onTabRemoved(tabId) {
+    removeTabContext(tabId);
+  });
+}
+
+if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.onUpdated) {
+  chrome.tabs.onUpdated.addListener(function onTabUpdated(tabId, changeInfo, tab) {
+    if (!tab || !tab.url) {
+      return;
+    }
+    try {
+      upsertTabContextFromSender({ tab: tab }, {}, {});
+    } catch (error) {
+    }
+  });
+}
+
+if (typeof stateStore.subscribe === 'function') {
+  try {
+    stateStore.subscribe(function onStateChanged(eventPayload) {
+      broadcastMessage(createBroadcastMessage(
+        MESSAGE_TYPES.BACKGROUND_STATE_CHANGED || 'BACKGROUND/STATE_CHANGED',
+        eventPayload,
+        { source: 'state_store' }
+      ));
+    });
+  } catch (error) {
+    logger.warn('Failed to subscribe to state store changes.', normalizeServiceWorkerError(error, 'stateStore.subscribe failed.', createNullObject()));
+  }
+}
+
+if (typeof orchestrator.ensureInitialized === 'function') {
+  Promise.resolve().then(function initializeOrchestrator() {
+    return orchestrator.ensureInitialized();
+  }).catch(function onInitializeFailure(error) {
+    logger.error('Failed to initialize orchestrator.', normalizeServiceWorkerError(error, 'orchestrator.ensureInitialized failed.', createNullObject()));
+  });
+}
+

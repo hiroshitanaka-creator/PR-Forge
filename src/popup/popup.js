@@ -1,3 +1,16 @@
+(function registerMAOEPopup(globalScope) {
+'use strict';
+
+const root = globalScope.MAOE;
+
+if (!root || typeof root.registerValue !== 'function') {
+throw new Error('[MAOE] namespace.js must be loaded before popup.js.');
+}
+
+if (root.has('popup')) {
+return;
+}
+
 function bindGlobalControls() {
 const dom = getDom();
 
