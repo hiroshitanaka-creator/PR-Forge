@@ -931,7 +931,14 @@ const MESSAGE_DISPATCH_TABLE = Object.freeze({
     return orchestrator.loadRepositoryTree ? orchestrator.loadRepositoryTree(payload) : null;
   },
   [MESSAGE_TYPES.POPUP_SELECT_ISSUE]: function handleSelectIssue(payload) {
-    return orchestrator.selectIssue ? orchestrator.selectIssue(payload) : null;
+    if (typeof orchestrator.selectIssue !== 'function') {
+      return null;
+    }
+    const source = isPlainObject(payload) ? payload : createNullObject();
+    const issueOrNumber = typeof source.issueNumber !== 'undefined'
+      ? source.issueNumber
+      : (isPlainObject(source.issue) ? source.issue : source);
+    return orchestrator.selectIssue(issueOrNumber, source);
   },
   [MESSAGE_TYPES.POPUP_SUBMIT_HUMAN_PAYLOAD]: function handleSubmitPayload(payload) {
     return orchestrator.submitHumanPayload ? orchestrator.submitHumanPayload(payload) : null;
