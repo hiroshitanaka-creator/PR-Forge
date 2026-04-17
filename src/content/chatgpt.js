@@ -1050,6 +1050,45 @@ host: getCurrentHost()
 } catch (error) {
 }
 
+function registerMessageBridge() {
+  if (!root.has('content_message_bridge')) {
+    return;
+  }
+  try {
+    const bridge = root.require('content_message_bridge');
+    bridge.registerHandlers({
+      probe: async function onProbe(payload) {
+        return probe({ forceInstall: !!(payload && payload.forceInstall) });
+      },
+      fillPrompt: async function onFillPrompt(payload) {
+        const text = payload && typeof payload.prompt === 'string' ? payload.prompt : '';
+        const options = payload && isPlainObject(payload.options) ? payload.options : {};
+        return fillPrompt(text, options);
+      },
+      extractLatestResponse: async function onExtract(payload) {
+        const options = payload && isPlainObject(payload.options) ? payload.options : {};
+        const result = await extractLatestResponse(options);
+        const inner = result && isPlainObject(result.result) ? result.result : null;
+        return {
+          ok: !!(result && result.ok !== false),
+          rawText: inner && typeof inner.rawText === 'string' ? inner.rawText : '',
+          result: result && result.result ? result.result : null,
+          adapterState: result && result.adapterState ? result.adapterState : null
+        };
+      }
+    }, {
+      providerId: DEFAULT_PROVIDER_ID,
+      siteId: resolveSiteId(),
+      displayName: resolveDisplayName()
+    });
+  } catch (error) {
+    logger.warn('Failed to register content message bridge handlers.', {
+      error: error && error.message
+    });
+  }
+}
+
+registerMessageBridge();
 autoInstallWhenReady();
 }(typeof globalThis !== 'undefined'
 ? globalThis

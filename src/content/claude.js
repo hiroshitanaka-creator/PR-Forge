@@ -1004,9 +1004,87 @@
     return instance;
   }
 
+  function registerMessageBridge(instance) {
+    if (!MAOE || typeof MAOE.has !== 'function' || !MAOE.has('content_message_bridge')) {
+      return;
+    }
+    let bridge;
+    try {
+      bridge = MAOE.require('content_message_bridge');
+    } catch (error) {
+      return;
+    }
+    if (!bridge || typeof bridge.registerHandlers !== 'function') {
+      return;
+    }
+
+    try {
+      bridge.registerHandlers({
+        probe: async function onProbe() {
+          const status = typeof instance.getStatus === 'function' ? instance.getStatus() : {};
+          const composer = typeof instance.findComposer === 'function' ? instance.findComposer() : null;
+          const submitButton = typeof instance.findSubmitButton === 'function' ? instance.findSubmitButton() : null;
+          return {
+            ok: true,
+            siteInfo: {
+              siteId: SITE_ID,
+              providerId: SITE_ID,
+              displayName: 'Claude',
+              url: global.location && global.location.href ? global.location.href : '',
+              host: global.location && global.location.hostname ? global.location.hostname : ''
+            },
+            ready: !!instance.started,
+            promptElementFound: !!composer,
+            submitElementFound: !!submitButton,
+            status: status
+          };
+        },
+        fillPrompt: async function onFillPrompt(payload) {
+          const text = payload && typeof payload.prompt === 'string' ? payload.prompt : '';
+          const result = await instance.setComposerText(text);
+          let submitted = false;
+          const autoSubmit = !!(payload && payload.options && payload.options.autoSubmit);
+          if (autoSubmit) {
+            try {
+              await instance.submit();
+              submitted = true;
+            } catch (error) {
+              submitted = false;
+            }
+          }
+          return {
+            ok: !!(result && result.ok !== false),
+            length: result && typeof result.length === 'number' ? result.length : text.length,
+            submitted: submitted,
+            providerId: SITE_ID
+          };
+        },
+        extractLatestResponse: async function onExtract() {
+          const rawText = typeof instance.getLatestAssistantText === 'function'
+            ? instance.getLatestAssistantText()
+            : '';
+          const text = typeof rawText === 'string' ? rawText : '';
+          return {
+            ok: text.length > 0,
+            rawText: text,
+            length: text.length,
+            providerId: SITE_ID
+          };
+        }
+      }, {
+        providerId: SITE_ID,
+        siteId: SITE_ID,
+        displayName: 'Claude'
+      });
+    } catch (error) {
+      log.warn('claude_message_bridge_register_failed', error && error.message ? error.message : String(error));
+    }
+  }
+
   async function start() {
     try {
       exposeFacade(adapter);
+      registerMessageBridge(adapter);
       await adapter.bootstrap();
     } catch (error) {
       adapter.state.lastError = error && error.message ? error.message : String(error);

@@ -937,11 +937,81 @@
       MAOE.Content.getAdapter ||
       ((site) => MAOE.Content.adapters[site] || null);
   }
+  function registerMessageBridge(adapter) {
+    if (!MAOE || typeof MAOE.has !== "function" || !MAOE.has("content_message_bridge")) {
+      return;
+    }
+    let bridge;
+    try {
+      bridge = MAOE.require("content_message_bridge");
+    } catch (error) {
+      return;
+    }
+    if (!bridge || typeof bridge.registerHandlers !== "function") {
+      return;
+    }
+    try {
+      bridge.registerHandlers({
+        probe: async function onProbe() {
+          const input = await adapter.findPromptInput().catch(() => null);
+          const submit = typeof adapter.findSubmitButton === "function" ? adapter.findSubmitButton() : null;
+          return {
+            ok: true,
+            siteInfo: {
+              siteId: AI_SITE,
+              providerId: AI_SITE,
+              displayName: "Gemini",
+              url: root.location && root.location.href ? root.location.href : "",
+              host: root.location && root.location.hostname ? root.location.hostname : ""
+            },
+            ready: !!(adapter.state && adapter.state.ready),
+            promptElementFound: !!input,
+            submitElementFound: !!submit
+          };
+        },
+        fillPrompt: async function onFillPrompt(payload) {
+          const text = payload && typeof payload.prompt === "string" ? payload.prompt : "";
+          const opts = payload && payload.options && typeof payload.options === "object" ? payload.options : {};
+          const inject = await adapter.injectPrompt(text, opts);
+          let submitted = false;
+          if (inject && inject.ok && opts.autoSubmit) {
+            try {
+              const result = await adapter.submitPrompt(opts);
+              submitted = !!(result && result.ok);
+            } catch (error) {
+              submitted = false;
+            }
+          }
+          return Object.assign({}, inject || {}, { submitted: submitted, providerId: AI_SITE });
+        },
+        extractLatestResponse: async function onExtract(payload) {
+          const opts = payload && payload.options && typeof payload.options === "object" ? payload.options : {};
+          const result = await adapter.extractOutput(opts);
+          return {
+            ok: !!(result && result.ok),
+            rawText: result && typeof result.rawText === "string" ? result.rawText : "",
+            fencedBlocks: result && Array.isArray(result.fencedBlocks) ? result.fencedBlocks : [],
+            parsed: result && result.parsed ? result.parsed : null,
+            meta: result && result.meta ? result.meta : null,
+            providerId: AI_SITE
+          };
+        }
+      }, {
+        providerId: AI_SITE,
+        siteId: AI_SITE,
+        displayName: "Gemini"
+      });
+    } catch (error) {
+      logger.warn("gemini_message_bridge_register_failed", error);
+    }
+  }
+
   async function bootstrap() {
     try {
       const adapter = new GeminiAdapter();
       registerAdapter(adapter);
       await adapter.init();
+      registerMessageBridge(adapter);
       root.__MAOE_GEMINI_ADAPTER__ = adapter;
       logger.info("bootstrap complete", {
         site: AI_SITE,
