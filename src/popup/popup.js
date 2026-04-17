@@ -1470,14 +1470,46 @@
     return result;
   }
 
+  function normalizeArtifactEnvelope(envelope) {
+    if (!isPlainObject(envelope)) {
+      return null;
+    }
+    const normalized = cloneValue(envelope);
+    if (typeof normalized.prompt !== 'string' && typeof normalized.promptText === 'string') {
+      normalized.prompt = normalized.promptText;
+    }
+    if (typeof normalized.packet !== 'string') {
+      const rawPacket = normalized.packet;
+      normalized.packet = typeof normalized.packetText === 'string' ? normalized.packetText : '';
+      if (isPlainObject(rawPacket) && typeof rawPacket.packetType === 'string' && typeof normalized.packetType !== 'string') {
+        normalized.packetType = rawPacket.packetType;
+      }
+    }
+    return normalized;
+  }
+
   function applyStageArtifactResult(result) {
     if (!isPlainObject(result)) {
       return;
     }
-    if (isPlainObject(result.artifact)) {
-      runtimeState.stageArtifact = cloneValue(result.artifact);
-    } else if (typeof result.prompt === 'string' || typeof result.packet === 'string') {
-      runtimeState.stageArtifact = cloneValue(result);
+    let source = null;
+    if (isPlainObject(result.stageArtifact)) {
+      source = result.stageArtifact;
+    } else if (isPlainObject(result.artifact)) {
+      source = result.artifact;
+    } else if (
+      typeof result.promptText === 'string'
+      || typeof result.packetText === 'string'
+      || typeof result.prompt === 'string'
+      || typeof result.packet === 'string'
+    ) {
+      source = result;
+    }
+    if (source) {
+      const normalized = normalizeArtifactEnvelope(source);
+      if (normalized && (typeof normalized.prompt === 'string' || typeof normalized.packet === 'string')) {
+        runtimeState.stageArtifact = normalized;
+      }
     }
     if (isPlainObject(result.workflow)) {
       runtimeState.workflow = cloneValue(result.workflow);
@@ -1500,17 +1532,22 @@
 
   async function buildDesignArtifact(options) {
     const opts = isPlainObject(options) ? options : Object.create(null);
-    return advanceStage(Object.assign(Object.create(null), opts, {
-      kind: 'build_design_artifact',
-      stage: STAGE_DESIGN
-    }));
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_BUILD_DESIGN_ARTIFACT || 'POPUP/BUILD_DESIGN_ARTIFACT',
+      opts
+    );
+    applyStageArtifactResult(result);
+    return result;
   }
 
   async function buildCurrentArtifact(options) {
     const opts = isPlainObject(options) ? options : Object.create(null);
-    return advanceStage(Object.assign(Object.create(null), opts, {
-      kind: 'build_current_artifact'
-    }));
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_BUILD_CURRENT_ARTIFACT || 'POPUP/BUILD_CURRENT_ARTIFACT',
+      opts
+    );
+    applyStageArtifactResult(result);
+    return result;
   }
 
   async function resetWorkflow(options) {
@@ -1532,15 +1569,34 @@
   }
 
   async function clearWorkflowError() {
-    return advanceStage({ kind: 'clear_error' });
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_CLEAR_WORKFLOW_ERROR || 'POPUP/CLEAR_WORKFLOW_ERROR',
+      null
+    );
+    if (isPlainObject(result)) {
+      if (isPlainObject(result.workflow)) {
+        runtimeState.workflow = cloneValue(result.workflow);
+      } else {
+        runtimeState.workflow = cloneValue(result);
+      }
+    }
+    runtimeState.lastError = null;
+    return result;
   }
 
   async function createPullRequestNow(options) {
     const opts = isPlainObject(options) ? options : Object.create(null);
-    return advanceStage(Object.assign(Object.create(null), opts, {
-      kind: 'create_pull_request',
-      stage: STAGE_PR
-    }));
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_CREATE_PULL_REQUEST || 'POPUP/CREATE_PULL_REQUEST',
+      opts
+    );
+    applyStageArtifactResult(result);
+    if (isPlainObject(result) && !isPlainObject(result.workflow)) {
+      if (result.stage || result.status || typeof result.pullRequestNumber !== 'undefined') {
+        runtimeState.workflow = cloneValue(result);
+      }
+    }
+    return result;
   }
 
   async function submitHumanPayload(payload) {
@@ -1610,9 +1666,8 @@
 
   async function validateGithubToken() {
     const payload = collectGitHubSettingsFromDom();
-    payload.validate = true;
     const result = await sendBackgroundMessage(
-      MESSAGE_TYPES.POPUP_SAVE_GITHUB_SETTINGS || 'POPUP/SAVE_GITHUB_SETTINGS',
+      MESSAGE_TYPES.POPUP_VALIDATE_GITHUB_TOKEN || 'POPUP/VALIDATE_GITHUB_TOKEN',
       payload
     );
     if (isPlainObject(result) && runtimeState.bootstrap) {
@@ -1638,11 +1693,21 @@
 
   async function saveRepositorySettings() {
     const payload = {
-      kind: 'save_repository_settings',
       repository: collectRepositorySettingsFromDom(),
       agents: collectAgentSettingsFromDom()
     };
-    const result = await advanceStage(payload);
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_SAVE_REPOSITORY_SETTINGS || 'POPUP/SAVE_REPOSITORY_SETTINGS',
+      payload
+    );
+    if (isPlainObject(result) && runtimeState.bootstrap) {
+      if (isPlainObject(result.repository)) {
+        runtimeState.bootstrap.repository = cloneValue(result.repository);
+      }
+      if (isPlainObject(result.settings)) {
+        runtimeState.bootstrap.settings = cloneValue(result.settings);
+      }
+    }
     runtimeState.dirty.repositoryOwner = false;
     runtimeState.dirty.repositoryRepo = false;
     runtimeState.dirty.repositoryBaseBranch = false;

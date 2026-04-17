@@ -24,6 +24,7 @@ const constants = root.has('constants') ? root.require('constants') : Object.cre
 const protocol = root.has('protocol') ? root.require('protocol') : Object.create(null);
 const stateStore = root.has('state_store') ? root.require('state_store') : Object.create(null);
 const orchestrator = root.has('orchestrator') ? root.require('orchestrator') : Object.create(null);
+const githubApi = root.has('github_api') ? root.require('github_api') : Object.create(null);
 const loggerModule = root.has('logger') ? root.require('logger') : null;
 const logger = (loggerModule && typeof loggerModule.createScope === 'function')
   ? loggerModule.createScope('service_worker')
@@ -930,7 +931,14 @@ const MESSAGE_DISPATCH_TABLE = Object.freeze({
     return orchestrator.loadRepositoryTree ? orchestrator.loadRepositoryTree(payload) : null;
   },
   [MESSAGE_TYPES.POPUP_SELECT_ISSUE]: function handleSelectIssue(payload) {
-    return orchestrator.selectIssue ? orchestrator.selectIssue(payload) : null;
+    if (typeof orchestrator.selectIssue !== 'function') {
+      return null;
+    }
+    const source = isPlainObject(payload) ? payload : createNullObject();
+    const issueOrNumber = typeof source.issueNumber !== 'undefined'
+      ? source.issueNumber
+      : (isPlainObject(source.issue) ? source.issue : source);
+    return orchestrator.selectIssue(issueOrNumber, source);
   },
   [MESSAGE_TYPES.POPUP_SUBMIT_HUMAN_PAYLOAD]: function handleSubmitPayload(payload) {
     return orchestrator.submitHumanPayload ? orchestrator.submitHumanPayload(payload) : null;
@@ -940,6 +948,18 @@ const MESSAGE_DISPATCH_TABLE = Object.freeze({
   },
   [MESSAGE_TYPES.POPUP_RESET_WORKFLOW]: function handleResetWorkflow(payload) {
     return orchestrator.resetWorkflow ? orchestrator.resetWorkflow(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_BUILD_DESIGN_ARTIFACT]: function handleBuildDesignArtifact(payload) {
+    return orchestrator.buildDesignArtifact ? orchestrator.buildDesignArtifact(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_BUILD_CURRENT_ARTIFACT]: function handleBuildCurrentArtifact(payload) {
+    return orchestrator.buildCurrentStageArtifact ? orchestrator.buildCurrentStageArtifact(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_CREATE_PULL_REQUEST]: function handleCreatePullRequest(payload) {
+    return orchestrator.createPullRequest ? orchestrator.createPullRequest(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_CLEAR_WORKFLOW_ERROR]: function handleClearWorkflowError(payload) {
+    return orchestrator.clearError ? orchestrator.clearError(payload) : null;
   },
   [MESSAGE_TYPES.POPUP_SAVE_GITHUB_SETTINGS]: function handleSaveGithubSettings(payload) {
     if (typeof stateStore.updateGitHubAuth === 'function') {
@@ -953,6 +973,58 @@ const MESSAGE_DISPATCH_TABLE = Object.freeze({
       return stateStore.updateGitHubAuth(normalized.next);
     }
     return null;
+  },
+  [MESSAGE_TYPES.POPUP_SAVE_REPOSITORY_SETTINGS]: function handleSaveRepositorySettings(payload) {
+    if (typeof stateStore.updateRepository !== 'function') {
+      return null;
+    }
+    const source = isPlainObject(payload) ? payload : createNullObject();
+    const repositoryPatch = isPlainObject(source.repository) ? source.repository : source;
+    return stateStore.updateRepository(repositoryPatch).then(function afterRepoSaved(savedRepo) {
+      if (isPlainObject(source.agents) && typeof stateStore.updateSettings === 'function') {
+        return stateStore.updateSettings({ agents: source.agents }).then(function afterAgentSaved(savedSettings) {
+          return { repository: savedRepo, settings: savedSettings };
+        });
+      }
+      return { repository: savedRepo };
+    });
+  },
+  [MESSAGE_TYPES.POPUP_SAVE_AGENT_SETTINGS]: function handleSaveAgentSettings(payload) {
+    if (typeof stateStore.updateSettings !== 'function') {
+      return null;
+    }
+    const source = isPlainObject(payload) ? payload : createNullObject();
+    const agents = isPlainObject(source.agents) ? source.agents : source;
+    return stateStore.updateSettings({ agents: agents });
+  },
+  [MESSAGE_TYPES.POPUP_VALIDATE_GITHUB_TOKEN]: function handleValidateGithubToken(payload) {
+    if (typeof stateStore.updateGitHubAuth !== 'function') {
+      return null;
+    }
+    const cached = typeof stateStore.getCachedGitHubAuth === 'function'
+      ? stateStore.getCachedGitHubAuth()
+      : null;
+    const normalized = normalizeAuthUpdatePayload(payload, cached);
+    const savePromise = normalized.changed
+      ? stateStore.updateGitHubAuth(normalized.next)
+      : Promise.resolve(cached);
+    return savePromise.then(function afterSave(saved) {
+      if (!githubApi || typeof githubApi.getAuthenticatedUser !== 'function') {
+        return saved;
+      }
+      return githubApi.getAuthenticatedUser({ personalAccessToken: saved && saved.personalAccessToken })
+        .then(function onValidated(user) {
+          const next = mergePlainObjects(saved || createNullObject(), {
+            username: (user && (user.login || user.name)) || (saved && saved.username) || '',
+            lastValidatedAt: new Date().toISOString()
+          });
+          return stateStore.updateGitHubAuth(next);
+        })
+        .catch(function onValidateFail(error) {
+          logger.warn('GitHub token validation failed.', normalizeServiceWorkerError(error, 'validate token failed.', createNullObject()));
+          throw error;
+        });
+    });
   },
   [MESSAGE_TYPES.CONTENT_SITE_DETECTED]: function handleContentSiteDetected(payload, sender) {
     return upsertTabContextFromSender(sender, payload, { probed: true });

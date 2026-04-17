@@ -41,7 +41,9 @@
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
         "content/common/human_hub_bridge.js",
-        "content/chatgpt_content.js"
+        "content/common/content_site_adapter.js",
+        "content/common/content_message_bridge.js",
+        "content/chatgpt.js"
       ],
       "run_at": "document_idle"
     },
@@ -59,6 +61,7 @@
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
         "content/common/human_hub_bridge.js",
+        "content/common/content_message_bridge.js",
         "content/claude.js"
       ],
       "run_at": "document_idle"
@@ -77,6 +80,7 @@
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
         "content/common/human_hub_bridge.js",
+        "content/common/content_message_bridge.js",
         "content/gemini.js"
       ],
       "run_at": "document_idle"
@@ -95,6 +99,7 @@
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
         "content/common/human_hub_bridge.js",
+        "content/common/content_message_bridge.js",
         "content/grok.js"
       ],
       "run_at": "document_idle"

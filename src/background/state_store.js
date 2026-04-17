@@ -2231,6 +2231,57 @@ return freezeClone(currentSettings);
 
 }
 
+function getCachedGitHubAuth() {
+  const cache = ensureBootstrapCache();
+  return freezeClone(normalizeGitHubAuthSnapshot(cache.githubAuth));
+}
+
+function getCachedRepository() {
+  const cache = ensureBootstrapCache();
+  return freezeClone(normalizeRepositorySnapshot(cache.repository));
+}
+
+function getCachedSettings() {
+  const cache = ensureBootstrapCache();
+  return freezeClone(normalizeSettingsSnapshot(cache.settings));
+}
+
+async function updateGitHubAuth(nextAuth) {
+  const normalized = normalizeGitHubAuthSnapshot(nextAuth);
+  let saved = normalized;
+  if (typeof storage.saveGitHubAuth === 'function') {
+    saved = normalizeGitHubAuthSnapshot(await storage.saveGitHubAuth(normalized));
+  }
+  updateBootstrapField('githubAuth', saved);
+  return freezeClone(saved);
+}
+
+async function updateRepository(patch) {
+  const source = isPlainObject(patch) ? patch : createNullObject();
+  let saved;
+  if (typeof storage.patchRepository === 'function') {
+    saved = normalizeRepositorySnapshot(await storage.patchRepository(source));
+  } else {
+    const current = normalizeRepositorySnapshot(ensureBootstrapCache().repository);
+    saved = normalizeRepositorySnapshot(mergePlainObjects(current, source));
+  }
+  updateBootstrapField('repository', saved);
+  return freezeClone(saved);
+}
+
+async function updateSettings(patch) {
+  const source = isPlainObject(patch) ? patch : createNullObject();
+  let saved;
+  if (typeof storage.patchSettings === 'function') {
+    saved = normalizeSettingsSnapshot(await storage.patchSettings(source));
+  } else {
+    const current = normalizeSettingsSnapshot(ensureBootstrapCache().settings);
+    saved = normalizeSettingsSnapshot(mergePlainObjects(current, source));
+  }
+  updateBootstrapField('settings', saved);
+  return freezeClone(saved);
+}
+
 async function persistWorkflowState(nextWorkflow, options) {
 const config = isPlainObject(options) ? options : createNullObject();
 const previousState = normalizeWorkflowStateFromAny(
@@ -3287,6 +3338,12 @@ subscribe: subscribe,
 unsubscribeAll: unsubscribeAll,
 appendEventLog: appendEventLog,
 patchWorkflowState: patchWorkflowState,
+getCachedGitHubAuth: getCachedGitHubAuth,
+getCachedRepository: getCachedRepository,
+getCachedSettings: getCachedSettings,
+updateGitHubAuth: updateGitHubAuth,
+updateRepository: updateRepository,
+updateSettings: updateSettings,
 replaceWorkflowState: replaceWorkflowState,
 transitionWorkflow: transitionWorkflow,
 advanceStage: advanceStage,
