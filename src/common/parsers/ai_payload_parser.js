@@ -622,7 +622,8 @@
     while (safety < 16) {
       safety += 1;
 
-      if (/^');
+      if (/^<!--/.test(source)) {
+        const commentEnd = source.indexOf('-->');
 
         if (commentEnd < 0) {
           return '';
@@ -1399,4 +1400,98 @@
           continue;
         }
 
-        if (sourceText.indexOf('
+        if (sourceText.indexOf('<!--', index) === index) {
+          parseComment();
+          continue;
+        }
+
+        if (sourceText.indexOf(CDATA_OPEN, index) === index) {
+          parseCdata();
+          continue;
+        }
+
+        if (sourceText.indexOf('<?', index) === index) {
+          parseProcessingInstruction();
+          continue;
+        }
+
+        if (sourceText.indexOf('</', index) === index) {
+          parseEndTag();
+          continue;
+        }
+
+        parseStartTag();
+      }
+
+      if (stack.length > 0) {
+        throwParserException(
+          INTERNAL_CODES.XML_UNTERMINATED_TAG,
+          'Unterminated XML element.',
+          {
+            tagName: stack[stack.length - 1].name
+          }
+        );
+      }
+
+      if (!rootNode) {
+        throwParserException(
+          ERROR_CODES.PARSER_INVALID_XML || INTERNAL_CODES.INVALID_XML_STRUCTURE,
+          'XML payload has no root element.',
+          createNullObject()
+        );
+      }
+
+      return {
+        ok: true,
+        xmlText: sourceText,
+        tree: rootNode,
+        errors: errors,
+        warnings: warnings
+      };
+    } catch (error) {
+      errors.push(createParseError(
+        normalizeString(error && error.code) || (ERROR_CODES.PARSER_INVALID_XML || INTERNAL_CODES.INVALID_XML_STRUCTURE),
+        normalizeString(error && error.message) || 'Failed to parse XML payload.',
+        isPlainObject(error && error.details) ? error.details : createNullObject()
+      ));
+
+      return {
+        ok: false,
+        xmlText: sourceText,
+        tree: null,
+        errors: errors,
+        warnings: warnings
+      };
+    }
+  }
+
+  const publicApi = {
+    parseXmlDocument: parseXmlDocument,
+    buildCandidateCollection: buildCandidateCollection,
+    ensureCollection: ensureCollection,
+    safeEnsureCollection: safeEnsureCollection,
+    helpers: {
+      normalizeFenceLanguage: normalizeFenceLanguage,
+      getLanguageFamily: getLanguageFamily,
+      languageMatches: languageMatches,
+      isSupportedFenceLanguage: isSupportedFenceLanguage,
+      normalizeParseOptions: normalizeParseOptions,
+      decodeXmlEntities: decodeXmlEntities,
+      encodeXmlAttributeValue: encodeXmlAttributeValue,
+      encodeXmlText: encodeXmlText,
+      looksLikeXml: looksLikeXml,
+      looksLikeJsonObject: looksLikeJsonObject,
+      guessXmlRootTag: guessXmlRootTag
+    }
+  };
+
+  root.registerValue('ai_payload_parser', publicApi, {
+    overwrite: false,
+    freeze: false,
+    clone: false
+  });
+}(typeof globalThis !== 'undefined'
+  ? globalThis
+  : (typeof self !== 'undefined'
+    ? self
+    : (typeof window !== 'undefined' ? window : this))));

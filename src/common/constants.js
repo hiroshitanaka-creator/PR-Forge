@@ -709,7 +709,7 @@
       'apikey'
     ],
     SENSITIVE_VALUE_PATTERNS: [
-      /gh[pousr][A-Za-z0-9]+/g,
+      /gh[pousr]_[A-Za-z0-9]+/g,
       /github_pat_[A-Za-z0-9_]+/g,
       /Bearer\s+[A-Za-z0-9._+/=-]+/gi
     ]

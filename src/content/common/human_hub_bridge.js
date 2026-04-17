@@ -1,3 +1,6 @@
+(function registerMAOEHumanHubBridge(global) {
+'use strict';
+
 const MAOE = global.MAOE = global.MAOE || {};
 MAOE.content = MAOE.content || {};
 MAOE.content.common = MAOE.content.common || {};

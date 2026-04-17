@@ -201,8 +201,8 @@
 
     const cleaned = raw
       .replace(/^language-/, '')
-      .replace(/^[$begin:math:display$\{\(\]\+\/\, \'\'\)
-      \.replace\(\/\[$end:math:display$})]+$/, '');
+      .replace(/^[\[\{\(]+/, '')
+      .replace(/[\]\}\)]+$/, '');
 
     if (cleaned === 'txt') {
       return 'text';

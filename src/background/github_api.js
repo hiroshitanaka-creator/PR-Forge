@@ -1013,7 +1013,42 @@
           endpointPath.charAt(0) === "/" ? endpointPath : "/" + endpointPath,
           normalizedBaseUrl + "/",
         );
+
+    assertUrlIsAllowed(url, normalizedBaseUrl);
+
     return appendQuery(url, query).toString();
+  }
+
+  function assertUrlIsAllowed(url, baseUrlString) {
+    let baseHost = "";
+    try {
+      baseHost = new URL(baseUrlString).host.toLowerCase();
+    } catch (error) {
+      baseHost = "";
+    }
+    const requestHost = String(url.host || "").toLowerCase();
+    const requestProtocol = String(url.protocol || "").toLowerCase();
+
+    if (requestProtocol !== "https:") {
+      throw createGitHubApiError(
+        ERROR_CODES.INVALID_ARGUMENT || "INVALID_ARGUMENT",
+        "GitHub API request must use https.",
+        {
+          url: url.toString(),
+        },
+      );
+    }
+
+    if (!baseHost || requestHost !== baseHost) {
+      throw createGitHubApiError(
+        ERROR_CODES.INVALID_ARGUMENT || "INVALID_ARGUMENT",
+        "GitHub API request host is not allowed.",
+        {
+          url: url.toString(),
+          allowedHost: baseHost,
+        },
+      );
+    }
   }
 
   function headersToObject(headers) {
