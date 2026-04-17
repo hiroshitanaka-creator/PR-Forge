@@ -1465,8 +1465,664 @@
     }
   }
 
+  function getElementChildren(element, childName) {
+    if (!element || !Array.isArray(element.children)) {
+      return [];
+    }
+
+    const target = normalizeString(childName);
+    const output = [];
+
+    for (const child of element.children) {
+      if (child && child.type === 'element' && child.name === target) {
+        output.push(child);
+      }
+    }
+
+    return output;
+  }
+
+  function getFirstElementChild(element, childName) {
+    const matches = getElementChildren(element, childName);
+    return matches.length > 0 ? matches[0] : null;
+  }
+
+  function collectElementText(element) {
+    if (!element) {
+      return '';
+    }
+
+    if (element.type === 'text') {
+      return coerceText(element.content);
+    }
+
+    if (element.type === 'cdata') {
+      return coerceText(element.content);
+    }
+
+    if (element.type !== 'element' || !Array.isArray(element.children)) {
+      return '';
+    }
+
+    let output = '';
+
+    for (const child of element.children) {
+      output += collectElementText(child);
+    }
+
+    return output;
+  }
+
+  function elementHasElementChildren(element) {
+    if (!element || !Array.isArray(element.children)) {
+      return false;
+    }
+
+    for (const child of element.children) {
+      if (child && child.type === 'element') {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function elementHasCdataChild(element) {
+    if (!element || !Array.isArray(element.children)) {
+      return false;
+    }
+
+    for (const child of element.children) {
+      if (child && child.type === 'cdata') {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function normalizeMultilineString(value) {
+    const source = coerceText(value);
+
+    if (!source) {
+      return '';
+    }
+
+    return source.replace(/\r\n?/g, '\n').replace(/^\s+|\s+$/g, '');
+  }
+
+  function parseExecutorOutput(rawText, options) {
+    const config = normalizeParseOptions(options);
+    const collectionResult = safeEnsureCollection(rawText, options);
+
+    if (!collectionResult.ok) {
+      return createParseResult(
+        'file',
+        'xml_file',
+        false,
+        null,
+        null,
+        [collectionResult.error],
+        [],
+        [],
+        { parser: 'executor_output' }
+      );
+    }
+
+    const collection = collectionResult.collection;
+    const attempts = [];
+    const sharedWarnings = collection.warnings.slice();
+    let lastErrors = [];
+
+    for (const candidate of collection.candidates) {
+      if (candidate.sourceType === 'fenced_block'
+        && candidate.language
+        && !languageMatches(candidate.language, 'xml')) {
+        continue;
+      }
+
+      if (!looksLikeXml(candidate.text)) {
+        continue;
+      }
+
+      const xmlResult = parseXmlDocument(candidate.text, {
+        allowHtmlEscapedXml: config.allowHtmlEscapedXml,
+        xmlDeclarationAllowed: config.xmlDeclarationAllowed,
+        maxPayloadChars: config.maxPayloadChars,
+        maxNodes: config.maxNodes
+      });
+
+      if (!xmlResult.ok) {
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'xml_parse' }, xmlResult.errors, xmlResult.warnings));
+        lastErrors = xmlResult.errors;
+        continue;
+      }
+
+      const tree = xmlResult.tree;
+
+      if (!tree || tree.type !== 'element' || tree.name !== FILE_ROOT_TAG) {
+        const rootError = createParseError(
+          INTERNAL_CODES.UNEXPECTED_ROOT,
+          'Expected root element <' + FILE_ROOT_TAG + '>.',
+          { actualRoot: tree ? tree.name : '' }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'root_check' }, [rootError], xmlResult.warnings));
+        lastErrors = [rootError];
+        continue;
+      }
+
+      const pathAttribute = config.pathAttribute || FILE_PATH_ATTRIBUTE;
+      const rawPath = hasOwn(tree.attributes, pathAttribute) ? tree.attributes[pathAttribute] : '';
+
+      if (!normalizeString(rawPath)) {
+        const pathError = createParseError(
+          INTERNAL_CODES.INVALID_FILE_PATH,
+          'File element is missing the ' + pathAttribute + ' attribute.',
+          { attribute: pathAttribute }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'path_attribute' }, [pathError], xmlResult.warnings));
+        lastErrors = [pathError];
+        continue;
+      }
+
+      let normalizedPath;
+
+      try {
+        normalizedPath = normalizeFilePath(rawPath);
+      } catch (error) {
+        const pathError = createParseError(
+          normalizeString(error && error.code) || INTERNAL_CODES.INVALID_FILE_PATH,
+          normalizeString(error && error.message) || 'Invalid file path.',
+          isPlainObject(error && error.details) ? error.details : { value: rawPath }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'path_normalize' }, [pathError], xmlResult.warnings));
+        lastErrors = [pathError];
+        continue;
+      }
+
+      if (config.expectedPath) {
+        let normalizedExpected = '';
+
+        try {
+          normalizedExpected = normalizeFilePath(config.expectedPath);
+        } catch (error) {
+          normalizedExpected = '';
+        }
+
+        if (normalizedExpected && normalizedExpected !== normalizedPath) {
+          const mismatchError = createParseError(
+            INTERNAL_CODES.INVALID_FILE_PATH,
+            'File path does not match the expected target path.',
+            { expectedPath: normalizedExpected, actualPath: normalizedPath }
+          );
+          attempts.push(createAttemptSummary(candidate, false, { stage: 'path_match' }, [mismatchError], xmlResult.warnings));
+          lastErrors = [mismatchError];
+          continue;
+        }
+      }
+
+      if (elementHasElementChildren(tree)) {
+        const structuralError = createParseError(
+          INTERNAL_CODES.FILE_CONTENT_MIXED_NODES,
+          'File element must not contain nested elements.',
+          { rootTag: FILE_ROOT_TAG }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'structure' }, [structuralError], xmlResult.warnings));
+        lastErrors = [structuralError];
+        continue;
+      }
+
+      const hasCdata = elementHasCdataChild(tree);
+
+      if (config.cdataRequired && !hasCdata) {
+        const cdataError = createParseError(
+          INTERNAL_CODES.FILE_CONTENT_MIXED_NODES,
+          'File content must be wrapped in a CDATA section.',
+          { rootTag: FILE_ROOT_TAG }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'cdata_required' }, [cdataError], xmlResult.warnings));
+        lastErrors = [cdataError];
+        continue;
+      }
+
+      const content = collectElementText(tree);
+
+      if (content.indexOf(CDATA_CLOSE) >= 0) {
+        const cdataEndError = createParseError(
+          INTERNAL_CODES.CONTENT_CONTAINS_CDATA_END,
+          'File content contains a CDATA end marker.',
+          { rootTag: FILE_ROOT_TAG }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'cdata_end_check' }, [cdataEndError], xmlResult.warnings));
+        lastErrors = [cdataEndError];
+        continue;
+      }
+
+      const payload = deepFreeze({
+        kind: 'file',
+        format: 'xml_file',
+        path: normalizedPath,
+        content: content,
+        contentLength: content.length,
+        hasCdata: hasCdata,
+        rootTag: FILE_ROOT_TAG,
+        pathAttribute: pathAttribute
+      });
+
+      attempts.push(createAttemptSummary(candidate, true, { stage: 'success' }, [], xmlResult.warnings));
+
+      return createParseResult(
+        'file',
+        'xml_file',
+        true,
+        candidate,
+        payload,
+        [],
+        mergeIssueArrays(sharedWarnings, xmlResult.warnings),
+        attempts,
+        { parser: 'executor_output' }
+      );
+    }
+
+    const fallbackError = lastErrors.length > 0
+      ? lastErrors
+      : [createParseError(
+          INTERNAL_CODES.FILE_NOT_FOUND,
+          'No <' + FILE_ROOT_TAG + '> element could be parsed from the payload.',
+          createNullObject()
+        )];
+
+    return createParseResult(
+      'file',
+      'xml_file',
+      false,
+      null,
+      null,
+      fallbackError,
+      sharedWarnings,
+      attempts,
+      { parser: 'executor_output' }
+    );
+  }
+
+  function parseReviewOutput(rawText, options) {
+    const config = normalizeParseOptions(options);
+    const collectionResult = safeEnsureCollection(rawText, options);
+
+    if (!collectionResult.ok) {
+      return createParseResult(
+        'review',
+        'xml_review',
+        false,
+        null,
+        null,
+        [collectionResult.error],
+        [],
+        [],
+        { parser: 'review_output' }
+      );
+    }
+
+    const collection = collectionResult.collection;
+    const attempts = [];
+    const sharedWarnings = collection.warnings.slice();
+    let lastErrors = [];
+
+    for (const candidate of collection.candidates) {
+      if (candidate.sourceType === 'fenced_block'
+        && candidate.language
+        && !languageMatches(candidate.language, 'xml')) {
+        continue;
+      }
+
+      if (!looksLikeXml(candidate.text)) {
+        continue;
+      }
+
+      const xmlResult = parseXmlDocument(candidate.text, {
+        allowHtmlEscapedXml: config.allowHtmlEscapedXml,
+        xmlDeclarationAllowed: config.xmlDeclarationAllowed,
+        maxPayloadChars: config.maxPayloadChars,
+        maxNodes: config.maxNodes
+      });
+
+      if (!xmlResult.ok) {
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'xml_parse' }, xmlResult.errors, xmlResult.warnings));
+        lastErrors = xmlResult.errors;
+        continue;
+      }
+
+      const tree = xmlResult.tree;
+
+      if (!tree || tree.type !== 'element' || tree.name !== REVIEW_ROOT_TAG) {
+        const rootError = createParseError(
+          INTERNAL_CODES.UNEXPECTED_ROOT,
+          'Expected root element <' + REVIEW_ROOT_TAG + '>.',
+          { actualRoot: tree ? tree.name : '' }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'root_check' }, [rootError], xmlResult.warnings));
+        lastErrors = [rootError];
+        continue;
+      }
+
+      const verdictElement = getFirstElementChild(tree, 'verdict');
+      const verdictFromAttribute = hasOwn(tree.attributes, 'verdict')
+        ? normalizeVerdict(tree.attributes.verdict)
+        : '';
+      const verdictFromElement = verdictElement
+        ? normalizeVerdict(collectElementText(verdictElement))
+        : '';
+      const verdict = verdictFromElement || verdictFromAttribute;
+
+      if (!verdict) {
+        const verdictError = createParseError(
+          INTERNAL_CODES.REVIEW_MISSING_VERDICT,
+          'Review element is missing a valid verdict.',
+          { allowed: REVIEW_VERDICTS.slice() }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'verdict' }, [verdictError], xmlResult.warnings));
+        lastErrors = [verdictError];
+        continue;
+      }
+
+      if (verdictElement
+        && verdictFromAttribute
+        && verdictFromElement
+        && verdictFromAttribute !== verdictFromElement) {
+        const conflictError = createParseError(
+          INTERNAL_CODES.REVIEW_CONFLICTING_VERDICT,
+          'Review verdict attribute and element disagree.',
+          { attribute: verdictFromAttribute, element: verdictFromElement }
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'verdict_conflict' }, [conflictError], xmlResult.warnings));
+        lastErrors = [conflictError];
+        continue;
+      }
+
+      const summaryElement = getFirstElementChild(tree, 'summary');
+      const summary = normalizeMultilineString(summaryElement ? collectElementText(summaryElement) : '');
+
+      if (config.requireSummary && !summary) {
+        const summaryError = createParseError(
+          INTERNAL_CODES.REVIEW_MISSING_SUMMARY,
+          'Review element is missing a non-empty summary.',
+          createNullObject()
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'summary' }, [summaryError], xmlResult.warnings));
+        lastErrors = [summaryError];
+        continue;
+      }
+
+      const findingsContainer = getFirstElementChild(tree, 'findings');
+      const findingElements = findingsContainer
+        ? getElementChildren(findingsContainer, 'finding')
+        : getElementChildren(tree, 'finding');
+      const findings = [];
+
+      for (const findingElement of findingElements) {
+        if (findings.length >= MAX_REVIEW_FINDINGS) {
+          break;
+        }
+
+        const severity = normalizeString(
+          hasOwn(findingElement.attributes, 'severity')
+            ? findingElement.attributes.severity
+            : ''
+        );
+        const target = normalizeString(
+          hasOwn(findingElement.attributes, 'target')
+            ? findingElement.attributes.target
+            : (hasOwn(findingElement.attributes, 'path')
+              ? findingElement.attributes.path
+              : '')
+        );
+        const message = normalizeMultilineString(collectElementText(findingElement));
+
+        if (!message) {
+          continue;
+        }
+
+        findings.push(deepFreeze({
+          severity: severity,
+          target: target,
+          message: message
+        }));
+      }
+
+      const payload = deepFreeze({
+        kind: 'review',
+        format: 'xml_review',
+        verdict: verdict,
+        summary: summary,
+        findings: findings,
+        rootTag: REVIEW_ROOT_TAG
+      });
+
+      attempts.push(createAttemptSummary(candidate, true, { stage: 'success' }, [], xmlResult.warnings));
+
+      return createParseResult(
+        'review',
+        'xml_review',
+        true,
+        candidate,
+        payload,
+        [],
+        mergeIssueArrays(sharedWarnings, xmlResult.warnings),
+        attempts,
+        { parser: 'review_output' }
+      );
+    }
+
+    const fallbackError = lastErrors.length > 0
+      ? lastErrors
+      : [createParseError(
+          INTERNAL_CODES.REVIEW_NOT_FOUND,
+          'No <' + REVIEW_ROOT_TAG + '> element could be parsed from the payload.',
+          createNullObject()
+        )];
+
+    return createParseResult(
+      'review',
+      'xml_review',
+      false,
+      null,
+      null,
+      fallbackError,
+      sharedWarnings,
+      attempts,
+      { parser: 'review_output' }
+    );
+  }
+
+  function tryParseJsonObject(text) {
+    const source = stripBom(coerceText(text)).trim();
+
+    if (!source) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(source);
+      return isPlainObject(parsed) ? parsed : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function normalizePacketCandidate(parsedValue) {
+    if (!isPlainObject(parsedValue)) {
+      return null;
+    }
+
+    if (protocol && typeof protocol.validatePacket === 'function') {
+      try {
+        const validation = protocol.validatePacket(parsedValue);
+
+        if (validation && validation.valid) {
+          return validation.normalized;
+        }
+
+        return null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    const requiredFields = (constants.MANUAL_HUB
+      && constants.MANUAL_HUB.REQUIRED_FIELDS
+      && Array.isArray(constants.MANUAL_HUB.REQUIRED_FIELDS.ENVELOPE))
+      ? constants.MANUAL_HUB.REQUIRED_FIELDS.ENVELOPE
+      : ['protocolVersion', 'packetType', 'requestId', 'createdAt', 'source', 'target', 'payload'];
+
+    for (const field of requiredFields) {
+      if (!hasOwn(parsedValue, field)) {
+        return null;
+      }
+    }
+
+    return parsedValue;
+  }
+
+  function parsePacketPayload(rawText) {
+    const collectionResult = safeEnsureCollection(rawText, { collection: null });
+
+    if (!collectionResult.ok) {
+      return createParseResult(
+        'packet',
+        'json_packet',
+        false,
+        null,
+        null,
+        [collectionResult.error],
+        [],
+        [],
+        { parser: 'packet_payload' }
+      );
+    }
+
+    const collection = collectionResult.collection;
+    const attempts = [];
+    const sharedWarnings = collection.warnings.slice();
+    let lastErrors = [];
+
+    if (protocol && typeof protocol.parsePacketText === 'function') {
+      try {
+        const delimited = protocol.parsePacketText(rawText);
+
+        if (delimited && delimited.valid && isPlainObject(delimited.normalized)) {
+          const payload = { packet: cloneValue(delimited.normalized) };
+
+          return createParseResult(
+            'packet',
+            'json_packet',
+            true,
+            null,
+            payload,
+            [],
+            sharedWarnings,
+            attempts,
+            { parser: 'packet_payload', mode: 'delimited_envelope' }
+          );
+        }
+
+        if (delimited && Array.isArray(delimited.errors) && delimited.errors.length > 0) {
+          lastErrors = delimited.errors.map(function mapError(entry) {
+            return createParseError(
+              normalizeString(entry && entry.code) || INTERNAL_CODES.INVALID_PACKET,
+              normalizeString(entry && entry.message) || 'Invalid packet envelope.',
+              isPlainObject(entry && entry.details) ? entry.details : createNullObject()
+            );
+          });
+        }
+      } catch (error) {
+        lastErrors = [createParseError(
+          normalizeString(error && error.code) || INTERNAL_CODES.INVALID_PACKET,
+          normalizeString(error && error.message) || 'Failed to parse packet envelope.',
+          createNullObject()
+        )];
+      }
+    }
+
+    for (const candidate of collection.candidates) {
+      if (candidate.sourceType === 'fenced_block'
+        && candidate.language
+        && !languageMatches(candidate.language, 'json')) {
+        continue;
+      }
+
+      if (!looksLikeJsonObject(candidate.text)) {
+        continue;
+      }
+
+      const parsed = tryParseJsonObject(candidate.text);
+
+      if (!parsed) {
+        const jsonError = createParseError(
+          INTERNAL_CODES.INVALID_PACKET,
+          'Candidate is not a valid JSON object.',
+          createNullObject()
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'json_parse' }, [jsonError], []));
+        lastErrors = [jsonError];
+        continue;
+      }
+
+      const normalized = normalizePacketCandidate(parsed);
+
+      if (!normalized) {
+        const shapeError = createParseError(
+          INTERNAL_CODES.INVALID_PACKET,
+          'JSON object does not match the MAOE packet envelope shape.',
+          createNullObject()
+        );
+        attempts.push(createAttemptSummary(candidate, false, { stage: 'envelope_shape' }, [shapeError], []));
+        lastErrors = [shapeError];
+        continue;
+      }
+
+      const payload = { packet: cloneValue(normalized) };
+
+      attempts.push(createAttemptSummary(candidate, true, { stage: 'success' }, [], []));
+
+      return createParseResult(
+        'packet',
+        'json_packet',
+        true,
+        candidate,
+        payload,
+        [],
+        sharedWarnings,
+        attempts,
+        { parser: 'packet_payload', mode: 'json_candidate' }
+      );
+    }
+
+    const fallbackError = lastErrors.length > 0
+      ? lastErrors
+      : [createParseError(
+          INTERNAL_CODES.PACKET_NOT_FOUND,
+          'No MAOE packet envelope could be parsed from the payload.',
+          createNullObject()
+        )];
+
+    return createParseResult(
+      'packet',
+      'json_packet',
+      false,
+      null,
+      null,
+      fallbackError,
+      sharedWarnings,
+      attempts,
+      { parser: 'packet_payload' }
+    );
+  }
+
   const publicApi = {
     parseXmlDocument: parseXmlDocument,
+    parseExecutorOutput: parseExecutorOutput,
+    parseReviewOutput: parseReviewOutput,
+    parsePacketPayload: parsePacketPayload,
     buildCandidateCollection: buildCandidateCollection,
     ensureCollection: ensureCollection,
     safeEnsureCollection: safeEnsureCollection,
@@ -1481,7 +2137,9 @@
       encodeXmlText: encodeXmlText,
       looksLikeXml: looksLikeXml,
       looksLikeJsonObject: looksLikeJsonObject,
-      guessXmlRootTag: guessXmlRootTag
+      guessXmlRootTag: guessXmlRootTag,
+      normalizeFilePath: normalizeFilePath,
+      normalizeVerdict: normalizeVerdict
     }
   };
 
