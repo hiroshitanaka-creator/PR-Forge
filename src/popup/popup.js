@@ -235,6 +235,254 @@
     return runtimeState;
   }
 
+  const DOM_ID_MAP = {
+    appShell: 'app-shell',
+    appTitle: 'app-title',
+    appSubtitle: 'app-subtitle',
+    refreshBootstrapButton: 'refresh-bootstrap-button',
+    globalStatusBanner: 'global-status-banner',
+    globalStatusText: 'global-status-text',
+    globalErrorBanner: 'global-error-banner',
+    globalErrorCode: 'global-error-code',
+    globalErrorText: 'global-error-text',
+    dismissGlobalErrorButton: 'dismiss-global-error-button',
+    tabDashboardButton: 'tab-dashboard-button',
+    tabSettingsButton: 'tab-settings-button',
+    tabManualHubButton: 'tab-manual-hub-button',
+    panelDashboard: 'panel-dashboard',
+    panelSettings: 'panel-settings',
+    panelManualHub: 'panel-manual_hub',
+    refreshWorkflowButton: 'refresh-workflow-button',
+    workflowStageValue: 'workflow-stage-value',
+    workflowStatusValue: 'workflow-status-value',
+    workflowActiveProviderValue: 'workflow-active-provider-value',
+    workflowTargetFileValue: 'workflow-target-file-value',
+    workflowWorkingBranchValue: 'workflow-working-branch-value',
+    workflowPullRequestValue: 'workflow-pull-request-value',
+    workflowStagePipeline: 'workflow-stage-pipeline',
+    workflowDesignerProviderValue: 'workflow-designer-provider-value',
+    workflowExecutorProviderValue: 'workflow-executor-provider-value',
+    workflowAuditorProviderValue: 'workflow-auditor-provider-value',
+    workflowLastTransitionValue: 'workflow-last-transition-value',
+    workflowLastHumanActionValue: 'workflow-last-human-action-value',
+    workflowCurrentIssueValue: 'workflow-current-issue-value',
+    workflowCurrentIssueLink: 'workflow-current-issue-link',
+    workflowAuditVerdictValue: 'workflow-audit-verdict-value',
+    workflowAuditSummaryValue: 'workflow-audit-summary-value',
+    workflowErrorCodeValue: 'workflow-error-code-value',
+    buildCurrentArtifactButton: 'build-current-artifact-button',
+    advanceStageButton: 'advance-stage-button',
+    createPullRequestButton: 'create-pull-request-button',
+    resetWorkflowButton: 'reset-workflow-button',
+    loadRepoTreeButton: 'load-repo-tree-button',
+    repositoryOwnerValue: 'repository-owner-value',
+    repositoryRepoValue: 'repository-repo-value',
+    repositoryFullNameValue: 'repository-full-name-value',
+    repositoryBaseBranchValue: 'repository-base-branch-value',
+    repositoryDefaultBranchValue: 'repository-default-branch-value',
+    repositoryLink: 'repository-link',
+    repositoryTreeBranchValue: 'repository-tree-branch-value',
+    repositoryTreeShaValue: 'repository-tree-sha-value',
+    repositoryTreeEntryCountValue: 'repository-tree-entry-count-value',
+    repositoryTreePartialValue: 'repository-tree-partial-value',
+    repositoryTreeLoadedAtValue: 'repository-tree-loaded-at-value',
+    treePathPrefixInput: 'tree-path-prefix-input',
+    repositoryTreeTextarea: 'repository-tree-textarea',
+    loadIssuesButton: 'load-issues-button',
+    refreshIssuesButton: 'refresh-issues-button',
+    issueStateSelect: 'issue-state-select',
+    issueSortSelect: 'issue-sort-select',
+    issueDirectionSelect: 'issue-direction-select',
+    issueFilterInput: 'issue-filter-input',
+    issuesCountLabel: 'issues-count-label',
+    issuesIncludePullsCheckbox: 'issues-include-pulls-checkbox',
+    issuesTable: 'issues-table',
+    issuesTableBody: 'issues-table-body',
+    issueRowTemplate: 'issue-row-template',
+    selectedIssueHeaderValue: 'selected-issue-header-value',
+    selectedIssueStateValue: 'selected-issue-state-value',
+    selectedIssueLabelsValue: 'selected-issue-labels-value',
+    selectedIssueLink: 'selected-issue-link',
+    selectedTargetFileInput: 'selected-target-file-input',
+    selectIssueButton: 'select-issue-button',
+    buildDesignArtifactButton: 'build-design-artifact-button',
+    selectedIssueBodyTextarea: 'selected-issue-body-textarea',
+    probeActiveTabButton: 'probe-active-tab-button',
+    sendPromptToActiveTabButton: 'send-prompt-to-active-tab-button',
+    stageArtifactKindValue: 'stage-artifact-kind-value',
+    stageArtifactStageValue: 'stage-artifact-stage-value',
+    stageArtifactProviderValue: 'stage-artifact-provider-value',
+    stageArtifactTargetFileValue: 'stage-artifact-target-file-value',
+    stageArtifactValidValue: 'stage-artifact-valid-value',
+    stageArtifactWarningCountValue: 'stage-artifact-warning-count-value',
+    stageArtifactPromptLengthValue: 'stage-artifact-prompt-length-value',
+    stageArtifactPacketLengthValue: 'stage-artifact-packet-length-value',
+    stageArtifactIssueValue: 'stage-artifact-issue-value',
+    stageArtifactRepositoryValue: 'stage-artifact-repository-value',
+    stageArtifactPromptTextarea: 'stage-artifact-prompt-textarea',
+    copyStageArtifactPromptButton: 'copy-stage-artifact-prompt-button',
+    buildManualPacketFromArtifactButton: 'build-manual-packet-from-artifact-button',
+    stageArtifactPacketTextarea: 'stage-artifact-packet-textarea',
+    copyStageArtifactPacketButton: 'copy-stage-artifact-packet-button',
+    copyStageArtifactBothButton: 'copy-stage-artifact-both-button',
+    refreshTabContextsButton: 'refresh-tab-contexts-button',
+    tabContextList: 'tab-context-list',
+    tabContextItemTemplate: 'tab-context-item-template',
+    refreshEventLogButton: 'refresh-event-log-button',
+    showDebugLogCheckbox: 'show-debug-log-checkbox',
+    eventLogList: 'event-log-list',
+    eventLogItemTemplate: 'event-log-item-template',
+    settingsForm: 'settings-form',
+    githubPatInput: 'github-pat-input',
+    githubTokenTypeInput: 'github-token-type-input',
+    githubUsernameOutput: 'github-username-output',
+    githubLastValidatedOutput: 'github-last-validated-output',
+    validateGitHubButton: 'validate-github-button',
+    saveGitHubSettingsButton: 'save-github-settings-button',
+    clearGitHubTokenButton: 'clear-github-token-button',
+    repositoryOwnerInput: 'repository-owner-input',
+    repositoryRepoInput: 'repository-repo-input',
+    repositoryBaseBranchInput: 'repository-base-branch-input',
+    repositoryWorkingBranchPrefixInput: 'repository-working-branch-prefix-input',
+    repositoryIssueStateSelect: 'repository-issue-state-select',
+    repositoryIssueSortSelect: 'repository-issue-sort-select',
+    repositoryIssueDirectionSelect: 'repository-issue-direction-select',
+    githubApiBaseUrlInput: 'github-api-base-url-input',
+    githubRequestTimeoutInput: 'github-request-timeout-input',
+    settingsRepositoryFullNameValue: 'settings-repository-full-name-value',
+    settingsRepositoryDefaultBranchValue: 'settings-repository-default-branch-value',
+    settingsRepositoryVisibilityValue: 'settings-repository-visibility-value',
+    settingsRepositoryLink: 'settings-repository-link',
+    designerProviderSelect: 'designer-provider-select',
+    executorProviderSelect: 'executor-provider-select',
+    auditorProviderSelect: 'auditor-provider-select',
+    settingsCurrentActiveProviderValue: 'settings-current-active-provider-value',
+    settingsCurrentStageValue: 'settings-current-stage-value',
+    settingsActiveTabSelect: 'settings-active-tab-select',
+    settingsShowDebugLogCheckbox: 'settings-show-debug-log-checkbox',
+    settingsIncludeIssueBodyCheckbox: 'settings-include-issue-body-checkbox',
+    settingsIncludeTreeCheckbox: 'settings-include-tree-checkbox',
+    saveAllSettingsButton: 'save-all-settings-button',
+    reloadBootstrapButton: 'reload-bootstrap-button',
+    buildManualPacketButton: 'build-manual-packet-button',
+    copyManualPacketButton: 'copy-manual-packet-button',
+    manualHubStageValue: 'manual-hub-stage-value',
+    manualHubProviderValue: 'manual-hub-provider-value',
+    manualHubTargetFileValue: 'manual-hub-target-file-value',
+    manualHubPacketLengthValue: 'manual-hub-packet-length-value',
+    manualHubPacketTypeSelect: 'manual-hub-packet-type-select',
+    manualHubPacketTextarea: 'manual-hub-packet-textarea',
+    validateManualPacketButton: 'validate-manual-packet-button',
+    copyManualHubPacketButton: 'copy-manual-hub-packet-button',
+    extractFromActiveTabButton: 'extract-from-active-tab-button',
+    submitManualResponseButton: 'submit-manual-response-button',
+    manualResponseKindSelect: 'manual-response-kind-select',
+    manualResponseAutoSubmitCheckbox: 'manual-response-auto-submit-checkbox',
+    manualResponseTextarea: 'manual-response-textarea',
+    previewManualResponseButton: 'preview-manual-response-button',
+    submitManualResponseConfirmButton: 'submit-manual-response-confirm-button',
+    manualResponsePreviewTextarea: 'manual-response-preview-textarea',
+    manualTargetStageSelect: 'manual-target-stage-select',
+    manualTargetStatusSelect: 'manual-target-status-select',
+    manualApplyStageStateButton: 'manual-apply-stage-state-button',
+    manualMarkReadyButton: 'manual-mark-ready-button',
+    manualMarkInProgressButton: 'manual-mark-in-progress-button',
+    manualMarkAwaitHumanButton: 'manual-mark-await-human-button',
+    manualMarkApprovedButton: 'manual-mark-approved-button',
+    manualMarkRejectedButton: 'manual-mark-rejected-button',
+    manualMarkCompletedButton: 'manual-mark-completed-button',
+    manualClearErrorButton: 'manual-clear-error-button',
+    footerVersionLabel: 'footer-version-label',
+    footerRuntimeLabel: 'footer-runtime-label',
+    liveRegion: 'live-region'
+  };
+
+  function getDom() {
+    if (runtimeState.domCache) {
+      return runtimeState.domCache;
+    }
+
+    const doc = globalScope.document;
+
+    if (!doc || typeof doc.getElementById !== 'function') {
+      throw new Error('[MAOE/popup] document.getElementById is not available.');
+    }
+
+    const cache = Object.create(null);
+
+    for (const key of Object.keys(DOM_ID_MAP)) {
+      cache[key] = doc.getElementById(DOM_ID_MAP[key]);
+    }
+
+    cache.stageChips = {
+      idle: doc.getElementById('stage-chip-idle'),
+      design: doc.getElementById('stage-chip-design'),
+      execution: doc.getElementById('stage-chip-execution'),
+      audit: doc.getElementById('stage-chip-audit'),
+      pr: doc.getElementById('stage-chip-pr'),
+      completed: doc.getElementById('stage-chip-completed'),
+      error: doc.getElementById('stage-chip-error')
+    };
+
+    cache.tabButtons = [cache.tabDashboardButton, cache.tabSettingsButton, cache.tabManualHubButton];
+    cache.tabPanels = [cache.panelDashboard, cache.panelSettings, cache.panelManualHub];
+
+    runtimeState.domCache = cache;
+    return cache;
+  }
+
+  function setTextContent(element, text) {
+    if (element && 'textContent' in element) {
+      element.textContent = coerceText(text);
+    }
+  }
+
+  function setHiddenAttribute(element, hidden) {
+    if (!element) {
+      return;
+    }
+    if (hidden) {
+      element.setAttribute('hidden', '');
+    } else {
+      element.removeAttribute('hidden');
+    }
+  }
+
+  function showStatus(level, text) {
+    const dom = getDom();
+    const normalizedLevel = normalizeString(level) || 'info';
+    const message = coerceText(text);
+    runtimeState.lastStatusText = message;
+
+    if (dom.globalStatusBanner) {
+      dom.globalStatusBanner.dataset.level = normalizedLevel;
+    }
+
+    setTextContent(dom.globalStatusText, message);
+  }
+
+  function clearErrorBanner() {
+    const dom = getDom();
+    runtimeState.lastError = null;
+    setHiddenAttribute(dom.globalErrorBanner, true);
+    setTextContent(dom.globalErrorCode, 'ERROR');
+    setTextContent(dom.globalErrorText, '');
+  }
+
+  function showErrorBanner(error) {
+    const dom = getDom();
+    const normalized = normalizePopupError(error, 'Unexpected popup error.');
+    runtimeState.lastError = cloneValue(normalized);
+    setTextContent(dom.globalErrorCode, normalized.code);
+    setTextContent(dom.globalErrorText, normalized.message);
+    setHiddenAttribute(dom.globalErrorBanner, false);
+  }
+
+  function announce(message) {
+    const dom = getDom();
+    setTextContent(dom.liveRegion, coerceText(message));
+  }
+
   // Render/action/binding implementations are appended in subsequent parts.
   function renderAll() {}
   async function refreshBootstrap() { return null; }
