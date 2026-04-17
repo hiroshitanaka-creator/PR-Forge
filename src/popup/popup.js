@@ -483,6 +483,327 @@
     setTextContent(dom.liveRegion, coerceText(message));
   }
 
+  function resolveChromeRuntime() {
+    if (typeof chrome === 'undefined' || !chrome) {
+      return null;
+    }
+    return chrome.runtime || null;
+  }
+
+  function resolveChromeTabs() {
+    if (typeof chrome === 'undefined' || !chrome) {
+      return null;
+    }
+    return chrome.tabs || null;
+  }
+
+  function extractRuntimeLastError(runtime) {
+    if (!runtime || !runtime.lastError) {
+      return null;
+    }
+    const messageText = runtime.lastError.message
+      ? String(runtime.lastError.message)
+      : 'chrome.runtime.lastError';
+    return {
+      code: ERROR_CODES.MESSAGE_DELIVERY_FAILED || 'MESSAGE_DELIVERY_FAILED',
+      message: messageText,
+      details: Object.create(null)
+    };
+  }
+
+  function normalizeResponseEnvelope(response, requestMeta) {
+    if (!isPlainObject(response)) {
+      return {
+        status: 'error',
+        requestId: requestMeta.requestId,
+        type: requestMeta.type,
+        error: {
+          code: ERROR_CODES.MESSAGE_DELIVERY_FAILED || 'MESSAGE_DELIVERY_FAILED',
+          message: 'Empty response received from service worker.',
+          details: Object.create(null)
+        },
+        data: null,
+        meta: Object.create(null)
+      };
+    }
+    return {
+      status: response.status === 'error' ? 'error' : 'ok',
+      requestId: normalizeString(response.requestId) || requestMeta.requestId,
+      type: normalizeString(response.type) || requestMeta.type,
+      data: typeof response.data === 'undefined' ? null : cloneValue(response.data),
+      error: isPlainObject(response.error) ? cloneValue(response.error) : null,
+      meta: isPlainObject(response.meta) ? cloneValue(response.meta) : Object.create(null)
+    };
+  }
+
+  function sendBackgroundMessage(type, payload, meta) {
+    const runtime = resolveChromeRuntime();
+    const requestMeta = {
+      requestId: generateRequestId('popup'),
+      type: normalizeString(type)
+    };
+
+    if (!requestMeta.type) {
+      return Promise.reject(normalizePopupError({
+        code: ERROR_CODES.MESSAGE_UNSUPPORTED || 'MESSAGE_UNSUPPORTED',
+        message: 'Cannot send a message without a type.'
+      }, 'Cannot send a message without a type.'));
+    }
+
+    if (!runtime || typeof runtime.sendMessage !== 'function') {
+      return Promise.reject(normalizePopupError({
+        code: ERROR_CODES.MESSAGE_DELIVERY_FAILED || 'MESSAGE_DELIVERY_FAILED',
+        message: 'chrome.runtime.sendMessage is not available.'
+      }, 'chrome.runtime.sendMessage is not available.'));
+    }
+
+    const envelope = {
+      type: requestMeta.type,
+      requestId: requestMeta.requestId,
+      payload: typeof payload === 'undefined' ? null : cloneValue(payload),
+      meta: isPlainObject(meta) ? cloneValue(meta) : Object.create(null)
+    };
+
+    return new Promise(function executor(resolve, reject) {
+      let settled = false;
+
+      function settle(fn, value) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        fn(value);
+      }
+
+      try {
+        runtime.sendMessage(envelope, function onResponse(response) {
+          const lastError = extractRuntimeLastError(runtime);
+          if (lastError) {
+            settle(reject, normalizePopupError(lastError, lastError.message));
+            return;
+          }
+          const normalized = normalizeResponseEnvelope(response, requestMeta);
+          if (normalized.status === 'error') {
+            settle(reject, normalizePopupError(normalized.error, 'Service worker returned an error.'));
+            return;
+          }
+          settle(resolve, normalized.data);
+        });
+      } catch (error) {
+        settle(reject, normalizePopupError(error, 'Failed to send background message.'));
+      }
+    });
+  }
+
+  function sendTabMessage(tabId, type, payload, meta) {
+    const tabs = resolveChromeTabs();
+    const runtime = resolveChromeRuntime();
+    const numericTabId = normalizeIntegerOrNull(tabId);
+    const requestMeta = {
+      requestId: generateRequestId('popup_tab'),
+      type: normalizeString(type)
+    };
+
+    if (numericTabId === null) {
+      return Promise.reject(normalizePopupError({
+        code: ERROR_CODES.TAB_NOT_FOUND || 'TAB_NOT_FOUND',
+        message: 'Missing tab id for tab message.'
+      }, 'Missing tab id for tab message.'));
+    }
+    if (!requestMeta.type) {
+      return Promise.reject(normalizePopupError({
+        code: ERROR_CODES.MESSAGE_UNSUPPORTED || 'MESSAGE_UNSUPPORTED',
+        message: 'Cannot send a tab message without a type.'
+      }, 'Cannot send a tab message without a type.'));
+    }
+    if (!tabs || typeof tabs.sendMessage !== 'function') {
+      return Promise.reject(normalizePopupError({
+        code: ERROR_CODES.MESSAGE_DELIVERY_FAILED || 'MESSAGE_DELIVERY_FAILED',
+        message: 'chrome.tabs.sendMessage is not available.'
+      }, 'chrome.tabs.sendMessage is not available.'));
+    }
+
+    const envelope = {
+      type: requestMeta.type,
+      requestId: requestMeta.requestId,
+      payload: typeof payload === 'undefined' ? null : cloneValue(payload),
+      meta: isPlainObject(meta) ? cloneValue(meta) : Object.create(null)
+    };
+
+    return new Promise(function executor(resolve, reject) {
+      let settled = false;
+      function settle(fn, value) {
+        if (settled) { return; }
+        settled = true;
+        fn(value);
+      }
+      try {
+        tabs.sendMessage(numericTabId, envelope, function onResponse(response) {
+          const lastError = extractRuntimeLastError(runtime);
+          if (lastError) {
+            settle(reject, normalizePopupError(lastError, lastError.message));
+            return;
+          }
+          const normalized = normalizeResponseEnvelope(response, requestMeta);
+          if (normalized.status === 'error') {
+            settle(reject, normalizePopupError(normalized.error, 'Tab returned an error.'));
+            return;
+          }
+          settle(resolve, normalized.data);
+        });
+      } catch (error) {
+        settle(reject, normalizePopupError(error, 'Failed to send tab message.'));
+      }
+    });
+  }
+
+  function markBusy(key, flag) {
+    const normalizedKey = normalizeString(key);
+    if (!normalizedKey) {
+      return;
+    }
+    if (flag) {
+      runtimeState.busy[normalizedKey] = true;
+    } else {
+      delete runtimeState.busy[normalizedKey];
+    }
+  }
+
+  function isBusy(key) {
+    const normalizedKey = normalizeString(key);
+    if (!normalizedKey) {
+      return false;
+    }
+    return runtimeState.busy[normalizedKey] === true;
+  }
+
+  async function runBusy(key, fn) {
+    const normalizedKey = normalizeString(key) || 'default';
+    if (isBusy(normalizedKey)) {
+      logger.debug('runBusy skipped (already busy).', { key: normalizedKey });
+      return null;
+    }
+    markBusy(normalizedKey, true);
+    try {
+      return await fn();
+    } finally {
+      markBusy(normalizedKey, false);
+    }
+  }
+
+  function withErrorHandling(fn, options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    const busyKey = normalizeString(opts.busyKey);
+    const suppressRender = opts.suppressRender === true;
+    const fallbackMessage = normalizeString(opts.fallbackMessage) || 'Operation failed.';
+
+    return async function wrapped() {
+      try {
+        const runner = function runner() {
+          return Promise.resolve(fn.apply(null, arguments));
+        };
+        const invoker = busyKey
+          ? function invokeWithBusy() { return runBusy(busyKey, runner); }
+          : runner;
+        clearErrorBanner();
+        const result = await invoker();
+        if (!suppressRender && typeof renderAll === 'function') {
+          try {
+            renderAll();
+          } catch (renderError) {
+            logger.warn('renderAll failed after operation.', normalizePopupError(renderError, 'renderAll failed.'));
+          }
+        }
+        return result;
+      } catch (error) {
+        const normalized = normalizePopupError(error, fallbackMessage);
+        logger.error('Popup action failed.', normalized);
+        showErrorBanner(normalized);
+        announce(normalized.message);
+        if (!suppressRender && typeof renderAll === 'function') {
+          try {
+            renderAll();
+          } catch (renderError) {
+            logger.warn('renderAll failed after error.', normalizePopupError(renderError, 'renderAll failed.'));
+          }
+        }
+        return null;
+      }
+    };
+  }
+
+  function isBroadcastMessage(message) {
+    return isPlainObject(message) && message.__maoeBroadcast === true;
+  }
+
+  function handleBroadcastMessage(message) {
+    if (!isBroadcastMessage(message)) {
+      return;
+    }
+    const type = normalizeString(message.type);
+    const payload = isPlainObject(message.payload) ? cloneValue(message.payload) : null;
+    logger.debug('Broadcast received.', { type: type });
+
+    if (type === (MESSAGE_TYPES.BACKGROUND_STATE_CHANGED || 'BACKGROUND/STATE_CHANGED')) {
+      if (payload && isPlainObject(payload.workflow)) {
+        runtimeState.workflow = cloneValue(payload.workflow);
+      }
+      if (payload && Array.isArray(payload.eventLog)) {
+        runtimeState.eventLog = cloneValue(payload.eventLog);
+      }
+      try {
+        renderAll();
+      } catch (error) {
+        logger.warn('renderAll after broadcast failed.', normalizePopupError(error, 'renderAll failed.'));
+      }
+      return;
+    }
+
+    if (type === (MESSAGE_TYPES.WORKFLOW_STATE_UPDATED || 'WORKFLOW/STATE_UPDATED')) {
+      if (payload && isPlainObject(payload.workflow)) {
+        runtimeState.workflow = cloneValue(payload.workflow);
+      }
+      try {
+        renderAll();
+      } catch (error) {
+        logger.warn('renderAll after workflow update failed.', normalizePopupError(error, 'renderAll failed.'));
+      }
+      return;
+    }
+
+    if (type === (MESSAGE_TYPES.EVENT_LOG_APPENDED || 'EVENT_LOG/APPENDED')) {
+      if (payload && Array.isArray(payload.entries)) {
+        const existing = Array.isArray(runtimeState.eventLog) ? runtimeState.eventLog.slice() : [];
+        runtimeState.eventLog = existing.concat(cloneValue(payload.entries));
+      }
+      try {
+        renderAll();
+      } catch (error) {
+        logger.warn('renderAll after event log append failed.', normalizePopupError(error, 'renderAll failed.'));
+      }
+    }
+  }
+
+  function installRuntimeMessageListener() {
+    const runtime = resolveChromeRuntime();
+    if (!runtime || !runtime.onMessage || typeof runtime.onMessage.addListener !== 'function') {
+      return false;
+    }
+    if (runtimeState.listenerInstalled) {
+      return true;
+    }
+    runtime.onMessage.addListener(function onPopupRuntimeMessage(message) {
+      try {
+        handleBroadcastMessage(message);
+      } catch (error) {
+        logger.warn('Broadcast handler failed.', normalizePopupError(error, 'Broadcast handler failed.'));
+      }
+      return false;
+    });
+    runtimeState.listenerInstalled = true;
+    return true;
+  }
+
   // Render/action/binding implementations are appended in subsequent parts.
   function renderAll() {}
   async function refreshBootstrap() { return null; }
