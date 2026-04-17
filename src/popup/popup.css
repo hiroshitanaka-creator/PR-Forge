@@ -366,6 +366,20 @@ textarea::placeholder {
   font-size: 12px;
 }
 
+.inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.inline-toggle input[type="checkbox"] {
+  margin: 0;
+}
+
 .card-actions {
   display: flex;
   flex-wrap: wrap;
