@@ -1307,18 +1307,368 @@
       logger.warn('renderAll encountered an error.', normalizePopupError(error, 'renderAll failed.'));
     }
   }
-  async function refreshBootstrap() { return null; }
-  async function refreshWorkflow() { return null; }
-  async function refreshEventLog() { return null; }
-  async function loadIssues() { return null; }
-  async function loadRepositoryTree() { return null; }
-  async function applyIssueSelection() { return null; }
-  async function buildCurrentArtifact() { return null; }
-  async function buildDesignArtifact() { return null; }
-  async function advanceStage() { return null; }
-  async function resetWorkflow() { return null; }
-  async function clearWorkflowError() { return null; }
-  async function createPullRequestNow() { return null; }
+  // --- Part E: Core actions ---
+
+  async function refreshBootstrap(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_GET_BOOTSTRAP || 'POPUP/GET_BOOTSTRAP',
+      opts
+    );
+    if (isPlainObject(result)) {
+      runtimeState.bootstrap = cloneValue(result);
+      if (isPlainObject(result.workflow)) {
+        runtimeState.workflow = cloneValue(result.workflow);
+      }
+      if (Array.isArray(result.eventLog)) {
+        runtimeState.eventLog = cloneValue(result.eventLog);
+      }
+      if (isPlainObject(result.manualHub)) {
+        runtimeState.manualHub = cloneValue(result.manualHub);
+      }
+      if (isPlainObject(result.ui) && typeof result.ui.activeTab === 'string') {
+        runtimeState.transientPreferences.activeTab = result.ui.activeTab;
+        runtimeState.transientPreferences.showDebugLog = result.ui.showDebugLog === true;
+      }
+    }
+    return result;
+  }
+
+  async function refreshWorkflow() {
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_GET_WORKFLOW_STATE || 'POPUP/GET_WORKFLOW_STATE',
+      null
+    );
+    if (isPlainObject(result)) {
+      runtimeState.workflow = cloneValue(result);
+    }
+    return result;
+  }
+
+  async function refreshEventLog(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_GET_EVENT_LOG || 'POPUP/GET_EVENT_LOG',
+      opts
+    );
+    if (Array.isArray(result)) {
+      runtimeState.eventLog = cloneValue(result);
+    } else if (isPlainObject(result) && Array.isArray(result.entries)) {
+      runtimeState.eventLog = cloneValue(result.entries);
+    }
+    return result;
+  }
+
+  function buildIssueQueryFromDom() {
+    const dom = getDom();
+    const bootstrap = isPlainObject(runtimeState.bootstrap) ? runtimeState.bootstrap : null;
+    const settingsRepo = bootstrap && isPlainObject(bootstrap.settings) && isPlainObject(bootstrap.settings.repository)
+      ? bootstrap.settings.repository
+      : null;
+    const query = Object.create(null);
+    if (dom.issueStateSelect && dom.issueStateSelect.value) {
+      query.state = dom.issueStateSelect.value;
+    } else if (settingsRepo && settingsRepo.issueState) {
+      query.state = settingsRepo.issueState;
+    }
+    if (dom.issueSortSelect && dom.issueSortSelect.value) {
+      query.sort = dom.issueSortSelect.value;
+    } else if (settingsRepo && settingsRepo.issueSort) {
+      query.sort = settingsRepo.issueSort;
+    }
+    if (dom.issueDirectionSelect && dom.issueDirectionSelect.value) {
+      query.direction = dom.issueDirectionSelect.value;
+    } else if (settingsRepo && settingsRepo.issueDirection) {
+      query.direction = settingsRepo.issueDirection;
+    }
+    return query;
+  }
+
+  async function loadIssues(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    const payload = Object.assign(Object.create(null), buildIssueQueryFromDom(), opts);
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_LOAD_ISSUES || 'POPUP/LOAD_ISSUES',
+      payload
+    );
+
+    const items = isPlainObject(result) && Array.isArray(result.items)
+      ? result.items
+      : (Array.isArray(result) ? result : []);
+    const total = isPlainObject(result) && typeof result.total === 'number'
+      ? result.total
+      : items.length;
+
+    runtimeState.issues.items = cloneValue(items);
+    runtimeState.issues.total = total;
+    runtimeState.issues.lastQuery = cloneValue(payload);
+
+    return result;
+  }
+
+  async function loadRepositoryTree(options) {
+    const dom = getDom();
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    const prefix = runtimeState.repository && normalizeString(runtimeState.repository.pathPrefix);
+    const inputPrefix = dom.treePathPrefixInput ? normalizeString(dom.treePathPrefixInput.value) : '';
+    const payload = Object.assign(Object.create(null), opts, {
+      pathPrefix: prefix || inputPrefix || ''
+    });
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_LOAD_REPO_TREE || 'POPUP/LOAD_REPO_TREE',
+      payload
+    );
+    if (isPlainObject(result)) {
+      runtimeState.repository.tree = cloneValue(result);
+      if (typeof payload.pathPrefix === 'string') {
+        runtimeState.repository.pathPrefix = payload.pathPrefix;
+      }
+      runtimeState.dirty.treePathPrefix = false;
+    }
+    return result;
+  }
+
+  async function applyIssueSelection(issueNumber, extraPayload) {
+    const numeric = normalizeIntegerOrNull(issueNumber);
+    if (numeric === null) {
+      throw normalizePopupError({
+        code: ERROR_CODES.INVALID_ARGUMENT || 'INVALID_ARGUMENT',
+        message: 'Issue number is required to apply selection.'
+      }, 'Issue number is required.');
+    }
+    const dom = getDom();
+    const targetFileInput = dom.selectedTargetFileInput;
+    const issueBodyInput = dom.selectedIssueBodyTextarea;
+    const payload = Object.assign(Object.create(null),
+      isPlainObject(extraPayload) ? extraPayload : Object.create(null),
+      {
+        issueNumber: numeric,
+        targetFile: targetFileInput ? normalizeString(targetFileInput.value) : '',
+        issueBody: issueBodyInput && !runtimeState.dirty.issueBody ? undefined : (issueBodyInput ? coerceText(issueBodyInput.value) : '')
+      }
+    );
+
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_SELECT_ISSUE || 'POPUP/SELECT_ISSUE',
+      payload
+    );
+    runtimeState.issues.selectedNumber = numeric;
+    if (isPlainObject(result) && isPlainObject(result.workflow)) {
+      runtimeState.workflow = cloneValue(result.workflow);
+    } else if (isPlainObject(result)) {
+      runtimeState.workflow = cloneValue(result);
+    }
+    runtimeState.dirty.targetFile = false;
+    runtimeState.dirty.issueBody = false;
+    return result;
+  }
+
+  function applyStageArtifactResult(result) {
+    if (!isPlainObject(result)) {
+      return;
+    }
+    if (isPlainObject(result.artifact)) {
+      runtimeState.stageArtifact = cloneValue(result.artifact);
+    } else if (typeof result.prompt === 'string' || typeof result.packet === 'string') {
+      runtimeState.stageArtifact = cloneValue(result);
+    }
+    if (isPlainObject(result.workflow)) {
+      runtimeState.workflow = cloneValue(result.workflow);
+    }
+  }
+
+  async function advanceStage(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    const payload = Object.assign(Object.create(null), opts);
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_ADVANCE_STAGE || 'POPUP/ADVANCE_STAGE',
+      payload
+    );
+    applyStageArtifactResult(result);
+    if (isPlainObject(result) && !result.artifact && (result.stage || result.status)) {
+      runtimeState.workflow = cloneValue(result);
+    }
+    return result;
+  }
+
+  async function buildDesignArtifact(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    return advanceStage(Object.assign(Object.create(null), opts, {
+      kind: 'build_design_artifact',
+      stage: STAGE_DESIGN
+    }));
+  }
+
+  async function buildCurrentArtifact(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    return advanceStage(Object.assign(Object.create(null), opts, {
+      kind: 'build_current_artifact'
+    }));
+  }
+
+  async function resetWorkflow(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_RESET_WORKFLOW || 'POPUP/RESET_WORKFLOW',
+      opts
+    );
+    if (isPlainObject(result)) {
+      if (isPlainObject(result.workflow)) {
+        runtimeState.workflow = cloneValue(result.workflow);
+      } else {
+        runtimeState.workflow = cloneValue(result);
+      }
+    }
+    runtimeState.stageArtifact = null;
+    runtimeState.manualResponsePreview = null;
+    return result;
+  }
+
+  async function clearWorkflowError() {
+    return advanceStage({ kind: 'clear_error' });
+  }
+
+  async function createPullRequestNow(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    return advanceStage(Object.assign(Object.create(null), opts, {
+      kind: 'create_pull_request',
+      stage: STAGE_PR
+    }));
+  }
+
+  async function submitHumanPayload(payload) {
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_SUBMIT_HUMAN_PAYLOAD || 'POPUP/SUBMIT_HUMAN_PAYLOAD',
+      isPlainObject(payload) ? payload : Object.create(null)
+    );
+    if (isPlainObject(result)) {
+      if (isPlainObject(result.workflow)) {
+        runtimeState.workflow = cloneValue(result.workflow);
+      }
+      if (isPlainObject(result.preview)) {
+        runtimeState.manualResponsePreview = cloneValue(result.preview);
+      }
+    }
+    return result;
+  }
+
+  function collectGitHubSettingsFromDom() {
+    const dom = getDom();
+    const pat = dom.githubPatInput ? normalizeString(dom.githubPatInput.value) : '';
+    const tokenType = dom.githubTokenTypeInput ? normalizeString(dom.githubTokenTypeInput.value) : '';
+    return {
+      personalAccessToken: pat,
+      tokenType: tokenType || 'classic'
+    };
+  }
+
+  function collectRepositorySettingsFromDom() {
+    const dom = getDom();
+    return {
+      owner: dom.repositoryOwnerInput ? normalizeString(dom.repositoryOwnerInput.value) : '',
+      repo: dom.repositoryRepoInput ? normalizeString(dom.repositoryRepoInput.value) : '',
+      baseBranch: dom.repositoryBaseBranchInput ? normalizeString(dom.repositoryBaseBranchInput.value) : '',
+      workingBranchPrefix: dom.repositoryWorkingBranchPrefixInput ? normalizeString(dom.repositoryWorkingBranchPrefixInput.value) : '',
+      issueState: dom.repositoryIssueStateSelect ? normalizeString(dom.repositoryIssueStateSelect.value) : '',
+      issueSort: dom.repositoryIssueSortSelect ? normalizeString(dom.repositoryIssueSortSelect.value) : '',
+      issueDirection: dom.repositoryIssueDirectionSelect ? normalizeString(dom.repositoryIssueDirectionSelect.value) : ''
+    };
+  }
+
+  function collectAgentSettingsFromDom() {
+    const dom = getDom();
+    return {
+      designerProviderId: dom.designerProviderSelect ? normalizeString(dom.designerProviderSelect.value) : '',
+      executorProviderId: dom.executorProviderSelect ? normalizeString(dom.executorProviderSelect.value) : '',
+      auditorProviderId: dom.auditorProviderSelect ? normalizeString(dom.auditorProviderSelect.value) : ''
+    };
+  }
+
+  async function saveGithubSettings() {
+    const payload = collectGitHubSettingsFromDom();
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_SAVE_GITHUB_SETTINGS || 'POPUP/SAVE_GITHUB_SETTINGS',
+      payload
+    );
+    if (isPlainObject(result) && runtimeState.bootstrap) {
+      runtimeState.bootstrap.githubAuth = cloneValue(result);
+    }
+    runtimeState.dirty.githubTokenType = false;
+    const dom = getDom();
+    if (dom.githubPatInput) {
+      dom.githubPatInput.value = '';
+    }
+    return result;
+  }
+
+  async function validateGithubToken() {
+    const payload = collectGitHubSettingsFromDom();
+    payload.validate = true;
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_SAVE_GITHUB_SETTINGS || 'POPUP/SAVE_GITHUB_SETTINGS',
+      payload
+    );
+    if (isPlainObject(result) && runtimeState.bootstrap) {
+      runtimeState.bootstrap.githubAuth = cloneValue(result);
+    }
+    return result;
+  }
+
+  async function clearGithubToken() {
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_SAVE_GITHUB_SETTINGS || 'POPUP/SAVE_GITHUB_SETTINGS',
+      { personalAccessToken: '', clear: true }
+    );
+    if (isPlainObject(result) && runtimeState.bootstrap) {
+      runtimeState.bootstrap.githubAuth = cloneValue(result);
+    }
+    const dom = getDom();
+    if (dom.githubPatInput) {
+      dom.githubPatInput.value = '';
+    }
+    return result;
+  }
+
+  async function saveRepositorySettings() {
+    const payload = {
+      kind: 'save_repository_settings',
+      repository: collectRepositorySettingsFromDom(),
+      agents: collectAgentSettingsFromDom()
+    };
+    const result = await advanceStage(payload);
+    runtimeState.dirty.repositoryOwner = false;
+    runtimeState.dirty.repositoryRepo = false;
+    runtimeState.dirty.repositoryBaseBranch = false;
+    runtimeState.dirty.repositoryWorkingBranchPrefix = false;
+    return result;
+  }
+
+  function updateIssueFilter(text) {
+    runtimeState.issues.filter = normalizeString(text);
+    renderIssues();
+  }
+
+  function setSelectedIssueNumber(issueNumber) {
+    runtimeState.issues.selectedNumber = normalizeIntegerOrNull(issueNumber);
+    renderIssues();
+  }
+
+  function setTreePathPrefix(text) {
+    runtimeState.repository.pathPrefix = normalizeString(text);
+    runtimeState.dirty.treePathPrefix = true;
+  }
+
+  function setActiveTab(name) {
+    const normalized = normalizeString(name) || 'dashboard';
+    runtimeState.transientPreferences.activeTab = normalized;
+    renderActiveTab();
+  }
+
+  function setShowDebugLog(flag) {
+    runtimeState.transientPreferences.showDebugLog = flag === true;
+    renderEventLog();
+  }
+
   function previewManualResponseResult() { return cloneValue(runtimeState.manualResponsePreview); }
 
   const popupApi = deepFreeze({
