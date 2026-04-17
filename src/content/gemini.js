@@ -346,14 +346,10 @@
       return true;
     }
     installRuntimeListener() {
-      if (root.chrome && chrome.runtime && chrome.runtime.onMessage) {
-        chrome.runtime.onMessage.addListener(this.boundHandleRuntimeMessage);
-      }
+      // Legacy AI_* listener superseded by content_message_bridge.
+      // See base_adapter.js for details.
     }
     removeRuntimeListener() {
-      if (root.chrome && chrome.runtime && chrome.runtime.onMessage) {
-        chrome.runtime.onMessage.removeListener(this.boundHandleRuntimeMessage);
-      }
     }
     installWindowListeners() {
       root.addEventListener(

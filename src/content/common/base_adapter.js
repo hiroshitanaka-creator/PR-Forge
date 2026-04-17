@@ -826,15 +826,15 @@
       return true;
     }
     installRuntimeListener() {
-      if (root.chrome && chrome.runtime && chrome.runtime.onMessage) {
-        chrome.runtime.onMessage.addListener(this.boundHandleRuntimeMessage);
-      }
-      return true;
+      // Legacy AI_PING / AI_INJECT_PROMPT / AI_SUBMIT_PROMPT / AI_EXTRACT_OUTPUT
+      // listeners are superseded by content_message_bridge (CONTENT/* types).
+      // Keeping this handler registered would race with the bridge because
+      // handleRuntimeMessage synchronously responds "unsupported message type"
+      // for any CONTENT/* envelope. The handler methods remain callable so
+      // bridge handlers can invoke injectPrompt/extractOutput directly.
+      return false;
     }
     removeRuntimeListener() {
-      if (root.chrome && chrome.runtime && chrome.runtime.onMessage) {
-        chrome.runtime.onMessage.removeListener(this.boundHandleRuntimeMessage);
-      }
       return true;
     }
     installWindowListeners() {
