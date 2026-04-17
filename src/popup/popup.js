@@ -1249,22 +1249,29 @@
   function renderManualHub() {
     const dom = getDom();
     const manual = isPlainObject(runtimeState.manualHub) ? runtimeState.manualHub : null;
+    const workflow = isPlainObject(runtimeState.workflow) ? runtimeState.workflow : null;
+
+    setTextContent(dom.manualHubStageValue, formatDisplayText(workflow && workflow.stage, '—'));
+    setTextContent(dom.manualHubProviderValue, formatDisplayText(workflow && workflow.activeProviderId, '—'));
+    setTextContent(dom.manualHubTargetFileValue, formatDisplayText(workflow && workflow.currentTaskFilePath, '—'));
+    setTextContent(dom.manualHubPacketLengthValue, String((manual && typeof manual.lastPacketText === 'string' ? manual.lastPacketText.length : 0)));
 
     setSelectValue(dom.manualHubPacketTypeSelect, manual && manual.lastPacketType);
-    setSelectValue(dom.manualHubClipboardFormatSelect, manual && manual.clipboardFormat);
+    setSelectValue(dom.manualResponseKindSelect, manual && manual.responseKind);
+    setSelectValue(dom.manualTargetStageSelect, workflow && workflow.stage);
+    setSelectValue(dom.manualTargetStatusSelect, workflow && workflow.status);
 
     if (dom.manualHubPacketTextarea && !runtimeState.dirty.manualPacket) {
       dom.manualHubPacketTextarea.value = coerceText(manual && manual.lastPacketText);
     }
-    if (dom.manualHubResponseTextarea && !runtimeState.dirty.manualResponse) {
-      dom.manualHubResponseTextarea.value = coerceText(manual && manual.lastResponseText);
+    if (dom.manualResponseTextarea && !runtimeState.dirty.manualResponse) {
+      dom.manualResponseTextarea.value = coerceText(manual && manual.lastResponseText);
     }
 
     const preview = isPlainObject(runtimeState.manualResponsePreview) ? runtimeState.manualResponsePreview : null;
-    setTextContent(dom.manualHubPreviewKindValue, formatDisplayText(preview && preview.kind, '—'));
-    setTextContent(dom.manualHubPreviewValidValue, preview ? (preview.valid ? 'valid' : 'invalid') : '—');
-    const previewErrors = preview && Array.isArray(preview.errors) ? preview.errors : [];
-    setTextContent(dom.manualHubPreviewErrorsValue, previewErrors.length ? previewErrors.join('; ') : '—');
+    if (dom.manualResponsePreviewTextarea) {
+      dom.manualResponsePreviewTextarea.value = preview ? safeJsonStringify(preview, 2) : '';
+    }
   }
 
   function renderActiveTab() {
@@ -2060,8 +2067,344 @@
     return result;
   }
 
+  // --- Part G: Bindings and initialization ---
+
+  function addListener(element, eventType, handler) {
+    if (!element || typeof element.addEventListener !== 'function') {
+      return;
+    }
+    element.addEventListener(eventType, handler);
+  }
+
+  function findIssueRowNumber(target) {
+    let current = target;
+    while (current && current !== document.body) {
+      if (current.getAttribute && current.getAttribute('data-issue-number')) {
+        return normalizeIntegerOrNull(current.getAttribute('data-issue-number'));
+      }
+      current = current.parentNode;
+    }
+    return null;
+  }
+
+  function bindGlobalControls() {
+    const dom = getDom();
+    addListener(dom.refreshBootstrapButton, 'click', withErrorHandling(async function onRefreshBootstrap() {
+      await refreshBootstrap();
+    }, { busyKey: 'refreshBootstrap', fallbackMessage: 'Failed to refresh bootstrap state.' }));
+    addListener(dom.dismissGlobalErrorButton, 'click', function onDismissError() {
+      clearErrorBanner();
+    });
+  }
+
+  function bindTabButtons() {
+    const dom = getDom();
+    const buttons = Array.isArray(dom.tabButtons) ? dom.tabButtons : [];
+    for (let index = 0; index < buttons.length; index += 1) {
+      const button = buttons[index];
+      if (!button) { continue; }
+      addListener(button, 'click', function onTabClick(event) {
+        const target = event.currentTarget;
+        const tabName = target && target.getAttribute ? target.getAttribute('data-tab') : '';
+        setActiveTab(tabName);
+      });
+    }
+  }
+
+  function bindWorkflowControls() {
+    const dom = getDom();
+    addListener(dom.refreshWorkflowButton, 'click', withErrorHandling(async function onRefreshWorkflow() {
+      await refreshWorkflow();
+    }, { busyKey: 'refreshWorkflow', fallbackMessage: 'Failed to refresh workflow.' }));
+    addListener(dom.buildCurrentArtifactButton, 'click', withErrorHandling(async function onBuildCurrent() {
+      await buildCurrentArtifact();
+    }, { busyKey: 'buildCurrentArtifact', fallbackMessage: 'Failed to build current artifact.' }));
+    addListener(dom.advanceStageButton, 'click', withErrorHandling(async function onAdvanceStage() {
+      await advanceStage();
+    }, { busyKey: 'advanceStage', fallbackMessage: 'Failed to advance stage.' }));
+    addListener(dom.createPullRequestButton, 'click', withErrorHandling(async function onCreatePr() {
+      await createPullRequestNow();
+    }, { busyKey: 'createPullRequest', fallbackMessage: 'Failed to create pull request.' }));
+    addListener(dom.resetWorkflowButton, 'click', withErrorHandling(async function onResetWorkflow() {
+      await resetWorkflow();
+    }, { busyKey: 'resetWorkflow', fallbackMessage: 'Failed to reset workflow.' }));
+  }
+
+  function bindRepositoryControls() {
+    const dom = getDom();
+    addListener(dom.loadRepoTreeButton, 'click', withErrorHandling(async function onLoadTree() {
+      await loadRepositoryTree();
+    }, { busyKey: 'loadRepoTree', fallbackMessage: 'Failed to load repository tree.' }));
+    addListener(dom.treePathPrefixInput, 'input', function onPathPrefixInput(event) {
+      setTreePathPrefix(event.target ? event.target.value : '');
+    });
+  }
+
+  function bindIssueControls() {
+    const dom = getDom();
+    addListener(dom.loadIssuesButton, 'click', withErrorHandling(async function onLoadIssues() {
+      await loadIssues();
+    }, { busyKey: 'loadIssues', fallbackMessage: 'Failed to load issues.' }));
+    addListener(dom.refreshIssuesButton, 'click', withErrorHandling(async function onRefreshIssues() {
+      await loadIssues();
+    }, { busyKey: 'loadIssues', fallbackMessage: 'Failed to refresh issues.' }));
+    addListener(dom.issueFilterInput, 'input', function onFilterInput(event) {
+      updateIssueFilter(event.target ? event.target.value : '');
+    });
+    addListener(dom.issuesIncludePullsCheckbox, 'change', function onIncludePulls(event) {
+      runtimeState.issues.includePulls = event.target ? event.target.checked === true : false;
+      renderIssues();
+    });
+    addListener(dom.issuesTableBody, 'click', function onIssueRowClick(event) {
+      const issueNumber = findIssueRowNumber(event.target);
+      if (issueNumber !== null) {
+        setSelectedIssueNumber(issueNumber);
+      }
+    });
+    addListener(dom.selectIssueButton, 'click', withErrorHandling(async function onSelectIssue() {
+      const number = runtimeState.issues.selectedNumber;
+      if (number === null) {
+        throw normalizePopupError({
+          code: ERROR_CODES.INVALID_STATE || 'INVALID_STATE',
+          message: 'Select an issue row first.'
+        }, 'No issue selected.');
+      }
+      await applyIssueSelection(number);
+    }, { busyKey: 'selectIssue', fallbackMessage: 'Failed to select issue.' }));
+    addListener(dom.buildDesignArtifactButton, 'click', withErrorHandling(async function onBuildDesign() {
+      await buildDesignArtifact();
+    }, { busyKey: 'buildDesignArtifact', fallbackMessage: 'Failed to build design artifact.' }));
+    addListener(dom.selectedTargetFileInput, 'input', function onTargetFileInput() {
+      runtimeState.dirty.targetFile = true;
+    });
+    addListener(dom.selectedIssueBodyTextarea, 'input', function onIssueBodyInput() {
+      runtimeState.dirty.issueBody = true;
+    });
+    addListener(dom.probeActiveTabButton, 'click', withErrorHandling(async function onProbeTab() {
+      await probeActiveTab();
+    }, { busyKey: 'probeTab', fallbackMessage: 'Failed to probe active tab.' }));
+    addListener(dom.sendPromptToActiveTabButton, 'click', withErrorHandling(async function onSendPrompt() {
+      await sendPromptToActiveTab();
+    }, { busyKey: 'sendPrompt', fallbackMessage: 'Failed to send prompt.' }));
+  }
+
+  function bindStageArtifactControls() {
+    const dom = getDom();
+    addListener(dom.copyStageArtifactPromptButton, 'click', withErrorHandling(async function onCopyPrompt() {
+      await copyStageArtifactPrompt();
+    }, { busyKey: 'copyPrompt', suppressRender: true, fallbackMessage: 'Failed to copy prompt.' }));
+    addListener(dom.copyStageArtifactPacketButton, 'click', withErrorHandling(async function onCopyPacket() {
+      await copyStageArtifactPacket();
+    }, { busyKey: 'copyPacket', suppressRender: true, fallbackMessage: 'Failed to copy packet.' }));
+    addListener(dom.copyStageArtifactBothButton, 'click', withErrorHandling(async function onCopyBoth() {
+      await copyStageArtifactBoth();
+    }, { busyKey: 'copyBoth', suppressRender: true, fallbackMessage: 'Failed to copy artifact.' }));
+    addListener(dom.buildManualPacketFromArtifactButton, 'click', withErrorHandling(async function onBuildManualPacket() {
+      buildCurrentManualPacket();
+      await persistManualHubState();
+    }, { busyKey: 'buildManualPacket', fallbackMessage: 'Failed to build manual packet.' }));
+  }
+
+  function bindTabContextControls() {
+    const dom = getDom();
+    addListener(dom.refreshTabContextsButton, 'click', withErrorHandling(async function onRefreshTabContexts() {
+      await refreshBootstrap();
+      refreshTabContexts();
+    }, { busyKey: 'refreshTabContexts', fallbackMessage: 'Failed to refresh tab contexts.' }));
+  }
+
+  function bindEventLogControls() {
+    const dom = getDom();
+    addListener(dom.refreshEventLogButton, 'click', withErrorHandling(async function onRefreshEventLog() {
+      await refreshEventLog();
+    }, { busyKey: 'refreshEventLog', fallbackMessage: 'Failed to refresh event log.' }));
+    addListener(dom.showDebugLogCheckbox, 'change', function onShowDebugLog(event) {
+      setShowDebugLog(event.target ? event.target.checked === true : false);
+    });
+  }
+
+  function bindSettingsControls() {
+    const dom = getDom();
+    addListener(dom.settingsForm, 'submit', function onSettingsSubmit(event) {
+      event.preventDefault();
+    });
+    addListener(dom.saveGitHubSettingsButton, 'click', withErrorHandling(async function onSaveGithub() {
+      await saveGithubSettings();
+    }, { busyKey: 'saveGithub', fallbackMessage: 'Failed to save GitHub settings.' }));
+    addListener(dom.validateGitHubButton, 'click', withErrorHandling(async function onValidateGithub() {
+      await validateGithubToken();
+    }, { busyKey: 'validateGithub', fallbackMessage: 'Failed to validate GitHub token.' }));
+    addListener(dom.clearGitHubTokenButton, 'click', withErrorHandling(async function onClearGithub() {
+      await clearGithubToken();
+    }, { busyKey: 'clearGithub', fallbackMessage: 'Failed to clear GitHub token.' }));
+    addListener(dom.githubPatInput, 'input', function onPatInput() {
+      runtimeState.dirty.githubPat = true;
+    });
+    addListener(dom.githubTokenTypeInput, 'input', function onTokenTypeInput() {
+      runtimeState.dirty.githubTokenType = true;
+    });
+    const repoInputs = [
+      { el: dom.repositoryOwnerInput, key: 'repositoryOwner' },
+      { el: dom.repositoryRepoInput, key: 'repositoryRepo' },
+      { el: dom.repositoryBaseBranchInput, key: 'repositoryBaseBranch' },
+      { el: dom.repositoryWorkingBranchPrefixInput, key: 'repositoryWorkingBranchPrefix' }
+    ];
+    for (let index = 0; index < repoInputs.length; index += 1) {
+      const entry = repoInputs[index];
+      addListener(entry.el, 'input', (function makeHandler(key) {
+        return function onRepoInput() {
+          runtimeState.dirty[key] = true;
+        };
+      }(entry.key)));
+    }
+    const selectPairs = [
+      dom.repositoryIssueStateSelect,
+      dom.repositoryIssueSortSelect,
+      dom.repositoryIssueDirectionSelect,
+      dom.designerProviderSelect,
+      dom.executorProviderSelect,
+      dom.auditorProviderSelect
+    ];
+    for (let index = 0; index < selectPairs.length; index += 1) {
+      addListener(selectPairs[index], 'change', withErrorHandling(async function onSelectChange() {
+        await saveRepositorySettings();
+      }, { busyKey: 'saveRepositorySettings', fallbackMessage: 'Failed to save repository settings.' }));
+    }
+  }
+
+  function bindManualHubControls() {
+    const dom = getDom();
+    addListener(dom.manualHubPacketTypeSelect, 'change', function onPacketTypeChange(event) {
+      updateManualPacketType(event.target ? event.target.value : '');
+      persistManualHubState();
+    });
+    addListener(dom.manualResponseKindSelect, 'change', function onResponseKindChange(event) {
+      const manual = getManualHubState();
+      manual.responseKind = normalizeString(event.target ? event.target.value : '');
+    });
+    addListener(dom.manualHubPacketTextarea, 'input', function onPacketTextInput(event) {
+      updateManualPacketText(event.target ? event.target.value : '');
+    });
+    addListener(dom.manualResponseTextarea, 'input', function onResponseTextInput(event) {
+      updateManualResponseText(event.target ? event.target.value : '');
+    });
+    addListener(dom.copyManualHubPacketButton, 'click', withErrorHandling(async function onCopyManualPacket() {
+      await copyManualPacket();
+    }, { busyKey: 'copyManualPacket', suppressRender: true, fallbackMessage: 'Failed to copy manual packet.' }));
+    addListener(dom.copyManualPacketButton, 'click', withErrorHandling(async function onCopyManualPacketAlt() {
+      await copyManualPacket();
+    }, { busyKey: 'copyManualPacket', suppressRender: true, fallbackMessage: 'Failed to copy manual packet.' }));
+    addListener(dom.validateManualPacketButton, 'click', withErrorHandling(async function onValidateManualPacket() {
+      validateManualPacket();
+    }, { busyKey: 'validateManualPacket', fallbackMessage: 'Failed to validate manual packet.' }));
+    addListener(dom.extractFromActiveTabButton, 'click', withErrorHandling(async function onExtractResponse() {
+      await extractLatestResponse();
+    }, { busyKey: 'extractResponse', fallbackMessage: 'Failed to extract latest response.' }));
+    addListener(dom.previewManualResponseButton, 'click', withErrorHandling(async function onPreviewResponse() {
+      previewManualResponse();
+    }, { busyKey: 'previewResponse', fallbackMessage: 'Failed to preview response.' }));
+    addListener(dom.submitManualResponseButton, 'click', withErrorHandling(async function onSubmitResponse() {
+      await submitManualResponse();
+      await persistManualHubState();
+    }, { busyKey: 'submitManualResponse', fallbackMessage: 'Failed to submit manual response.' }));
+    addListener(dom.submitManualResponseConfirmButton, 'click', withErrorHandling(async function onSubmitResponseConfirm() {
+      await submitManualResponse();
+      await persistManualHubState();
+    }, { busyKey: 'submitManualResponse', fallbackMessage: 'Failed to submit manual response.' }));
+    addListener(dom.buildManualPacketButton, 'click', withErrorHandling(async function onBuildFromArtifact() {
+      buildCurrentManualPacket();
+      await persistManualHubState();
+    }, { busyKey: 'buildFromArtifact', fallbackMessage: 'Failed to build manual packet from artifact.' }));
+    addListener(dom.manualApplyStageStateButton, 'click', withErrorHandling(async function onApplyStageState() {
+      const targetStage = dom.manualTargetStageSelect ? normalizeString(dom.manualTargetStageSelect.value) : '';
+      const targetStatus = dom.manualTargetStatusSelect ? normalizeString(dom.manualTargetStatusSelect.value) : '';
+      await advanceStage({ kind: 'apply_stage_state', stage: targetStage, status: targetStatus });
+    }, { busyKey: 'applyStageState', fallbackMessage: 'Failed to apply stage state.' }));
+    const markButtons = [
+      { el: dom.manualMarkReadyButton, status: STATUS_READY },
+      { el: dom.manualMarkInProgressButton, status: STATUS_IN_PROGRESS },
+      { el: dom.manualMarkAwaitHumanButton, status: STATUS_AWAITING_HUMAN },
+      { el: dom.manualMarkApprovedButton, status: STATUS_APPROVED },
+      { el: dom.manualMarkRejectedButton, status: STATUS_REJECTED },
+      { el: dom.manualMarkCompletedButton, status: STATUS_COMPLETED }
+    ];
+    for (let index = 0; index < markButtons.length; index += 1) {
+      const entry = markButtons[index];
+      if (!entry.el) { continue; }
+      addListener(entry.el, 'click', withErrorHandling((function makeMarkHandler(status) {
+        return async function onMarkStatus() {
+          await advanceStage({ kind: 'mark_status', status: status });
+        };
+      }(entry.status)), { busyKey: 'markStatus', fallbackMessage: 'Failed to update status.' }));
+    }
+    addListener(dom.manualClearErrorButton, 'click', withErrorHandling(async function onClearError() {
+      await clearWorkflowError();
+    }, { busyKey: 'clearWorkflowError', fallbackMessage: 'Failed to clear workflow error.' }));
+  }
+
+  function installAllBindings() {
+    if (runtimeState.bindingsInstalled) {
+      return;
+    }
+    bindGlobalControls();
+    bindTabButtons();
+    bindWorkflowControls();
+    bindRepositoryControls();
+    bindIssueControls();
+    bindStageArtifactControls();
+    bindTabContextControls();
+    bindEventLogControls();
+    bindSettingsControls();
+    bindManualHubControls();
+    runtimeState.bindingsInstalled = true;
+  }
+
+  async function initializePopup() {
+    if (runtimeState.initialized) {
+      return runtimeState;
+    }
+    if (runtimeState.initializingPromise) {
+      return runtimeState.initializingPromise;
+    }
+    runtimeState.initializingPromise = (async function initialize() {
+      try {
+        installRuntimeMessageListener();
+        installAllBindings();
+        try {
+          await refreshBootstrap();
+        } catch (error) {
+          logger.warn('Initial bootstrap refresh failed.', normalizePopupError(error, 'refreshBootstrap failed.'));
+          showErrorBanner(normalizePopupError(error, 'Failed to load initial state.'));
+        }
+        refreshTabContexts();
+        renderAll();
+        runtimeState.initialized = true;
+        return runtimeState;
+      } finally {
+        runtimeState.initializingPromise = null;
+      }
+    }());
+    return runtimeState.initializingPromise;
+  }
+
+  function scheduleAutoInit() {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const start = function start() {
+      initializePopup().catch(function onInitFail(error) {
+        logger.error('Popup initialization failed.', normalizePopupError(error, 'initializePopup failed.'));
+      });
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', start, { once: true });
+    } else {
+      start();
+    }
+  }
+
   const popupApi = deepFreeze({
-    initialize: async function initialize() { return runtimeState; },
+    initialize: initializePopup,
     refreshBootstrap: refreshBootstrap,
     refreshWorkflow: refreshWorkflow,
     refreshEventLog: refreshEventLog,
@@ -2074,7 +2417,30 @@
     resetWorkflow: resetWorkflow,
     clearWorkflowError: clearWorkflowError,
     createPullRequestNow: createPullRequestNow,
+    submitHumanPayload: submitHumanPayload,
+    saveGithubSettings: saveGithubSettings,
+    validateGithubToken: validateGithubToken,
+    clearGithubToken: clearGithubToken,
+    saveRepositorySettings: saveRepositorySettings,
+    buildCurrentManualPacket: buildCurrentManualPacket,
+    copyManualPacket: copyManualPacket,
+    validateManualPacket: validateManualPacket,
+    previewManualResponse: previewManualResponse,
+    submitManualResponse: submitManualResponse,
+    extractLatestResponse: extractLatestResponse,
+    probeActiveTab: probeActiveTab,
+    sendPromptToActiveTab: sendPromptToActiveTab,
+    refreshTabContexts: refreshTabContexts,
+    copyStageArtifactPrompt: copyStageArtifactPrompt,
+    copyStageArtifactPacket: copyStageArtifactPacket,
+    copyStageArtifactBoth: copyStageArtifactBoth,
+    updateIssueFilter: updateIssueFilter,
+    setSelectedIssueNumber: setSelectedIssueNumber,
+    setTreePathPrefix: setTreePathPrefix,
+    setActiveTab: setActiveTab,
+    setShowDebugLog: setShowDebugLog,
     previewManualResponseResult: previewManualResponseResult,
+    renderAll: renderAll,
     getRuntimeState: function getRuntimeState() { return cloneValue(runtimeState); }
   });
 
@@ -2083,6 +2449,8 @@
     freeze: false,
     clone: false
   });
+
+  scheduleAutoInit();
 }(typeof globalThis !== 'undefined'
   ? globalThis
   : (typeof self !== 'undefined'
