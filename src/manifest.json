@@ -40,7 +40,6 @@
         "common/parsers/ai_payload_parser.js",
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
-        "content/common/human_hub_bridge.js",
         "content/common/content_site_adapter.js",
         "content/common/content_message_bridge.js",
         "content/chatgpt.js"
@@ -60,7 +59,6 @@
         "common/parsers/ai_payload_parser.js",
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
-        "content/common/human_hub_bridge.js",
         "content/common/content_message_bridge.js",
         "content/claude.js"
       ],
@@ -79,7 +77,6 @@
         "common/parsers/ai_payload_parser.js",
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
-        "content/common/human_hub_bridge.js",
         "content/common/content_message_bridge.js",
         "content/gemini.js"
       ],
@@ -98,7 +95,6 @@
         "common/parsers/ai_payload_parser.js",
         "content/common/dom_utils.js",
         "content/common/base_adapter.js",
-        "content/common/human_hub_bridge.js",
         "content/common/content_message_bridge.js",
         "content/grok.js"
       ],

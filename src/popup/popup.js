@@ -309,6 +309,7 @@
     selectedIssueBodyTextarea: 'selected-issue-body-textarea',
     probeActiveTabButton: 'probe-active-tab-button',
     sendPromptToActiveTabButton: 'send-prompt-to-active-tab-button',
+    sendPromptAutoSubmitCheckbox: 'send-prompt-auto-submit-checkbox',
     stageArtifactKindValue: 'stage-artifact-kind-value',
     stageArtifactStageValue: 'stage-artifact-stage-value',
     stageArtifactProviderValue: 'stage-artifact-provider-value',
@@ -2104,10 +2105,12 @@
         message: 'No prompt text is available to send.'
       }, 'No prompt available.');
     }
+    const dom = getDom();
+    const autoSubmit = !!(dom.sendPromptAutoSubmitCheckbox && dom.sendPromptAutoSubmitCheckbox.checked);
     return sendTabMessage(
       tab.id,
       MESSAGE_TYPES.CONTENT_FILL_PROMPT || 'CONTENT/FILL_PROMPT',
-      { prompt: text }
+      { prompt: text, options: { autoSubmit: autoSubmit } }
     );
   }
 

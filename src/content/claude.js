@@ -13,13 +13,9 @@
 
   const constants = MAOE.constants || {};
   const domUtils = MAOE.content.common.domUtils || MAOE.domUtils || {};
-  const bridgeNamespace = MAOE.content.common || {};
-  const createBridge =
-    (typeof bridgeNamespace.createHumanHubBridge === 'function' && bridgeNamespace.createHumanHubBridge) ||
-    (bridgeNamespace.humanHubBridge &&
-      typeof bridgeNamespace.humanHubBridge.createHumanHubBridge === 'function' &&
-      bridgeNamespace.humanHubBridge.createHumanHubBridge) ||
-    null;
+  // human_hub_bridge was removed: it only sent MAOE/HUMAN_HUB/* messages into
+  // the void (no service_worker handler ever existed). Claude now relies on
+  // content_message_bridge for popup→content envelopes.
 
   const SITE_ID = (constants.SITES && constants.SITES.CLAUDE) || 'claude';
   const READY_EVENT = 'maoe:claude:ready';
@@ -533,7 +529,6 @@
     constructor() {
       this.id = SITE_ID;
       this.siteId = SITE_ID;
-      this.bridge = null;
       this.started = false;
       this.destroyed = false;
       this.composer = null;
@@ -835,29 +830,8 @@
         destroyed: this.destroyed,
         lastKnownUrl: this.lastKnownUrl,
         state: Object.assign({}, this.state),
-        metadata: this.getPageMetadata(),
-        bridge: this.bridge && typeof this.bridge.status === 'function' ? this.bridge.status() : null
+        metadata: this.getPageMetadata()
       };
-    }
-
-    async attachBridge() {
-      if (this.bridge) return this.bridge;
-      if (!createBridge) {
-        log.warn('human_hub_bridge_factory_unavailable');
-        return null;
-      }
-      const bridge = createBridge(this, {
-        transportFormat: 'json',
-        autoNotifyReady: true,
-        autoPersistPacket: true,
-        autoSubmitCapture: true,
-        allowBodyFallbackRead: true
-      });
-      if (bridge && typeof bridge.initialize === 'function') {
-        await bridge.initialize();
-      }
-      this.bridge = bridge || null;
-      return this.bridge;
     }
 
     installDomObserver() {
@@ -895,9 +869,6 @@
       this.lastKnownUrl = nextUrl;
       this.state.lastUrlChangeAt = nowIso();
       this.composer = null;
-      if (this.bridge && typeof this.bridge.getRuntimeContext === 'function') {
-        safeCall(this.bridge.getRuntimeContext, this.bridge, true);
-      }
       emit(STATUS_EVENT, this.getStatus());
     }
 
@@ -929,7 +900,6 @@
       });
 
       this.register();
-      await this.attachBridge();
 
       this.installDomObserver();
       this.installUrlWatcher();
@@ -960,10 +930,6 @@
         global.clearInterval(this.urlTimer);
         this.urlTimer = null;
       }
-      if (this.bridge && typeof this.bridge.destroy === 'function') {
-        safeCall(this.bridge.destroy, this.bridge);
-      }
-      this.bridge = null;
       this.composer = null;
     }
   }
@@ -996,9 +962,6 @@
       },
       submit: function submit() {
         return instance.submit();
-      },
-      bridge: function bridge() {
-        return instance.bridge;
       }
     };
     return instance;

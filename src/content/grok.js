@@ -331,9 +331,8 @@
 
     async init() {
       if (this.state.ready) return true;
-      if (root.chrome && chrome.runtime && chrome.runtime.onMessage) {
-        chrome.runtime.onMessage.addListener(this.boundHandleRuntimeMessage);
-      }
+      // Legacy AI_* runtime listener intentionally disabled; bridge (CONTENT/*)
+      // handles popup requests. See content_message_bridge.js.
       root.addEventListener(
         `${CONTENT_EVENT_NAMESPACE}:packet-request`,
         this.boundHandleWindowPacketRequest
