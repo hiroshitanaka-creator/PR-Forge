@@ -804,8 +804,509 @@
     return true;
   }
 
-  // Render/action/binding implementations are appended in subsequent parts.
-  function renderAll() {}
+  // --- Part D: Renderers ---
+
+  function formatDisplayText(value, fallback) {
+    const text = coerceText(value).trim();
+    if (text) {
+      return text;
+    }
+    return typeof fallback === 'string' ? fallback : '—';
+  }
+
+  function formatTimestamp(isoText) {
+    const trimmed = normalizeString(isoText);
+    if (!trimmed) {
+      return '—';
+    }
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return trimmed;
+    }
+    try {
+      return parsed.toLocaleString();
+    } catch (error) {
+      return trimmed;
+    }
+  }
+
+  function setSelectValue(element, value) {
+    if (!element || typeof element.value !== 'string') {
+      return;
+    }
+    const target = coerceText(value);
+    if (element.value !== target) {
+      element.value = target;
+    }
+  }
+
+  function setCheckboxValue(element, checked) {
+    if (!element) {
+      return;
+    }
+    const next = checked === true;
+    if (element.checked !== next) {
+      element.checked = next;
+    }
+  }
+
+  function setInputValueIfClean(element, value, dirtyFlag) {
+    if (!element) {
+      return;
+    }
+    if (dirtyFlag) {
+      return;
+    }
+    const next = coerceText(value);
+    if (element.value !== next) {
+      element.value = next;
+    }
+  }
+
+  function setAnchorHref(element, href) {
+    if (!element) {
+      return;
+    }
+    const target = normalizeString(href);
+    if (target) {
+      element.setAttribute('href', target);
+      element.removeAttribute('aria-disabled');
+      if (element.tagName === 'A') {
+        element.style.pointerEvents = '';
+      }
+    } else {
+      element.setAttribute('href', '#');
+      element.setAttribute('aria-disabled', 'true');
+      if (element.tagName === 'A') {
+        element.style.pointerEvents = 'none';
+      }
+    }
+  }
+
+  function clearChildren(element) {
+    if (!element) {
+      return;
+    }
+    while (element.firstChild) {
+      element.removeChild(element.firstChild);
+    }
+  }
+
+  function cloneTemplateContent(template) {
+    if (!template || !template.content) {
+      return null;
+    }
+    const clone = template.content.cloneNode(true);
+    return clone.firstElementChild ? clone : null;
+  }
+
+  function renderWorkflow() {
+    const dom = getDom();
+    const workflow = isPlainObject(runtimeState.workflow) ? runtimeState.workflow : null;
+    const stage = workflow ? normalizeString(workflow.stage) : STAGE_IDLE;
+    const status = workflow ? normalizeString(workflow.status) : STATUS_IDLE;
+
+    setTextContent(dom.workflowStageValue, formatDisplayText(stage, STAGE_IDLE));
+    setTextContent(dom.workflowStatusValue, formatDisplayText(status, STATUS_IDLE));
+    setTextContent(dom.workflowActiveProviderValue, formatDisplayText(workflow && workflow.activeProviderId, '—'));
+    setTextContent(dom.workflowTargetFileValue, formatDisplayText(workflow && workflow.currentTaskFilePath, '—'));
+    setTextContent(dom.workflowWorkingBranchValue, formatDisplayText(workflow && workflow.workingBranch, '—'));
+
+    const prText = workflow && workflow.pullRequestNumber !== null && typeof workflow.pullRequestNumber !== 'undefined'
+      ? '#' + String(workflow.pullRequestNumber)
+      : formatDisplayText(workflow && workflow.pullRequestUrl, '—');
+    setTextContent(dom.workflowPullRequestValue, prText);
+
+    if (dom.stageChips) {
+      const chipStages = [STAGE_IDLE, STAGE_DESIGN, STAGE_EXECUTION, STAGE_AUDIT, STAGE_PR, STAGE_COMPLETED, STAGE_ERROR];
+      for (let index = 0; index < chipStages.length; index += 1) {
+        const chipStage = chipStages[index];
+        const chipEl = dom.stageChips[chipStage];
+        if (!chipEl) {
+          continue;
+        }
+        if (chipStage === stage) {
+          chipEl.setAttribute('data-active', 'true');
+          chipEl.setAttribute('aria-current', 'step');
+        } else {
+          chipEl.removeAttribute('data-active');
+          chipEl.removeAttribute('aria-current');
+        }
+      }
+    }
+
+    const providers = workflow && isPlainObject(workflow.selectedProviderIds) ? workflow.selectedProviderIds : null;
+    setTextContent(dom.workflowDesignerProviderValue, formatDisplayText(providers && providers.designer, '—'));
+    setTextContent(dom.workflowExecutorProviderValue, formatDisplayText(providers && providers.executor, '—'));
+    setTextContent(dom.workflowAuditorProviderValue, formatDisplayText(providers && providers.auditor, '—'));
+
+    setTextContent(dom.workflowLastTransitionValue, formatTimestamp(workflow && workflow.lastTransitionAt));
+    setTextContent(dom.workflowLastHumanActionValue, formatTimestamp(workflow && workflow.lastHumanActionAt));
+
+    const currentIssueNumber = workflow && typeof workflow.currentIssueNumber !== 'undefined' ? workflow.currentIssueNumber : null;
+    const currentIssueText = currentIssueNumber === null
+      ? '—'
+      : '#' + String(currentIssueNumber) + ' ' + formatDisplayText(workflow && workflow.currentIssueTitle, '(untitled)');
+    setTextContent(dom.workflowCurrentIssueValue, currentIssueText);
+    setAnchorHref(dom.workflowCurrentIssueLink, workflow && workflow.currentIssueUrl);
+
+    setTextContent(dom.workflowAuditVerdictValue, formatDisplayText(workflow && workflow.latestAuditVerdict, '—'));
+    setTextContent(dom.workflowAuditSummaryValue, formatDisplayText(workflow && workflow.latestAuditSummary, '—'));
+    setTextContent(dom.workflowErrorCodeValue, formatDisplayText(workflow && workflow.lastErrorCode, '—'));
+  }
+
+  function renderRepository() {
+    const dom = getDom();
+    const bootstrap = isPlainObject(runtimeState.bootstrap) ? runtimeState.bootstrap : null;
+    const repository = bootstrap && isPlainObject(bootstrap.repository) ? bootstrap.repository : null;
+    const tree = isPlainObject(runtimeState.repository) && isPlainObject(runtimeState.repository.tree)
+      ? runtimeState.repository.tree
+      : null;
+
+    setTextContent(dom.repositoryOwnerValue, formatDisplayText(repository && repository.owner, '—'));
+    setTextContent(dom.repositoryRepoValue, formatDisplayText(repository && repository.repo, '—'));
+    const fullName = repository && repository.owner && repository.repo
+      ? repository.owner + '/' + repository.repo
+      : '—';
+    setTextContent(dom.repositoryFullNameValue, fullName);
+    setTextContent(dom.repositoryBaseBranchValue, formatDisplayText(repository && repository.baseBranch, '—'));
+    setTextContent(dom.repositoryDefaultBranchValue, formatDisplayText(repository && repository.defaultBranch, '—'));
+
+    const repoUrl = repository && repository.owner && repository.repo
+      ? 'https://github.com/' + repository.owner + '/' + repository.repo
+      : '';
+    setAnchorHref(dom.repositoryLink, repoUrl);
+
+    setTextContent(dom.repositoryTreeBranchValue, formatDisplayText(tree && tree.branch, '—'));
+    setTextContent(dom.repositoryTreeShaValue, formatDisplayText(tree && tree.sha, '—'));
+    setTextContent(dom.repositoryTreeEntryCountValue, tree && Array.isArray(tree.entries)
+      ? String(tree.entries.length)
+      : (tree && typeof tree.entryCount !== 'undefined' ? String(tree.entryCount) : '—'));
+    setTextContent(dom.repositoryTreePartialValue, tree && tree.truncated ? 'yes' : (tree ? 'no' : '—'));
+    setTextContent(dom.repositoryTreeLoadedAtValue, formatTimestamp(tree && tree.loadedAt));
+
+    setInputValueIfClean(
+      dom.treePathPrefixInput,
+      runtimeState.repository && runtimeState.repository.pathPrefix,
+      runtimeState.dirty && runtimeState.dirty.treePathPrefix
+    );
+
+    if (dom.repositoryTreeTextarea) {
+      const entries = tree && Array.isArray(tree.entries) ? tree.entries : [];
+      const prefix = normalizeString(runtimeState.repository && runtimeState.repository.pathPrefix);
+      const lines = [];
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index];
+        if (!isPlainObject(entry)) {
+          continue;
+        }
+        const entryPath = normalizeString(entry.path);
+        if (!entryPath) {
+          continue;
+        }
+        if (prefix && entryPath.indexOf(prefix) !== 0) {
+          continue;
+        }
+        const tag = entry.type === 'tree' ? 'dir ' : 'file';
+        lines.push(tag + ' ' + entryPath);
+      }
+      dom.repositoryTreeTextarea.value = lines.join('\n');
+    }
+  }
+
+  function renderIssues() {
+    const dom = getDom();
+    const issuesState = isPlainObject(runtimeState.issues) ? runtimeState.issues : null;
+    const items = issuesState && Array.isArray(issuesState.items) ? issuesState.items : [];
+    const filter = issuesState ? normalizeString(issuesState.filter).toLowerCase() : '';
+    const includePulls = issuesState ? issuesState.includePulls === true : false;
+    const selectedNumber = issuesState ? normalizeIntegerOrNull(issuesState.selectedNumber) : null;
+
+    const tbody = dom.issuesTableBody;
+    const template = dom.issueRowTemplate;
+    if (tbody) {
+      clearChildren(tbody);
+      let visibleCount = 0;
+      for (let index = 0; index < items.length; index += 1) {
+        const issue = items[index];
+        if (!isPlainObject(issue)) {
+          continue;
+        }
+        if (!includePulls && issue.isPullRequest === true) {
+          continue;
+        }
+        if (filter) {
+          const haystack = (coerceText(issue.title) + ' #' + coerceText(issue.number)).toLowerCase();
+          if (haystack.indexOf(filter) === -1) {
+            continue;
+          }
+        }
+        const row = template ? cloneTemplateContent(template) : null;
+        const rowElement = row && row.firstElementChild;
+        if (!rowElement) {
+          continue;
+        }
+        const numberCell = rowElement.querySelector('[data-field="number"]');
+        const titleCell = rowElement.querySelector('[data-field="title"]');
+        const stateCell = rowElement.querySelector('[data-field="state"]');
+        const labelsCell = rowElement.querySelector('[data-field="labels"]');
+        setTextContent(numberCell, '#' + coerceText(issue.number));
+        setTextContent(titleCell, formatDisplayText(issue.title, '(untitled)'));
+        setTextContent(stateCell, formatDisplayText(issue.state, '—'));
+        if (labelsCell) {
+          const labels = Array.isArray(issue.labels) ? issue.labels : [];
+          const labelText = labels.map(function mapLabel(label) {
+            if (typeof label === 'string') return label;
+            if (isPlainObject(label)) return normalizeString(label.name);
+            return '';
+          }).filter(Boolean).join(', ');
+          setTextContent(labelsCell, labelText || '—');
+        }
+        rowElement.setAttribute('data-issue-number', String(issue.number));
+        if (selectedNumber !== null && Number(issue.number) === selectedNumber) {
+          rowElement.setAttribute('data-selected', 'true');
+        }
+        tbody.appendChild(row);
+        visibleCount += 1;
+      }
+      setTextContent(dom.issuesCountLabel, String(visibleCount) + ' / ' + String(items.length));
+    }
+
+    setCheckboxValue(dom.issuesIncludePullsCheckbox, includePulls);
+    setInputValueIfClean(dom.issueFilterInput, issuesState && issuesState.filter, false);
+
+    const selectedIssue = selectedNumber !== null
+      ? items.find(function findIssue(candidate) {
+        return isPlainObject(candidate) && Number(candidate.number) === selectedNumber;
+      })
+      : null;
+
+    if (selectedIssue) {
+      setTextContent(dom.selectedIssueHeaderValue, '#' + String(selectedIssue.number) + ' ' + formatDisplayText(selectedIssue.title, '(untitled)'));
+      setTextContent(dom.selectedIssueStateValue, formatDisplayText(selectedIssue.state, '—'));
+      const labels = Array.isArray(selectedIssue.labels) ? selectedIssue.labels : [];
+      const labelText = labels.map(function mapLabel(label) {
+        if (typeof label === 'string') return label;
+        if (isPlainObject(label)) return normalizeString(label.name);
+        return '';
+      }).filter(Boolean).join(', ');
+      setTextContent(dom.selectedIssueLabelsValue, labelText || '—');
+      setAnchorHref(dom.selectedIssueLink, selectedIssue.htmlUrl || selectedIssue.url);
+      if (dom.selectedIssueBodyTextarea && !runtimeState.dirty.issueBody) {
+        dom.selectedIssueBodyTextarea.value = coerceText(selectedIssue.body);
+      }
+    } else {
+      setTextContent(dom.selectedIssueHeaderValue, '—');
+      setTextContent(dom.selectedIssueStateValue, '—');
+      setTextContent(dom.selectedIssueLabelsValue, '—');
+      setAnchorHref(dom.selectedIssueLink, '');
+      if (dom.selectedIssueBodyTextarea && !runtimeState.dirty.issueBody) {
+        dom.selectedIssueBodyTextarea.value = '';
+      }
+    }
+
+    setInputValueIfClean(
+      dom.selectedTargetFileInput,
+      runtimeState.workflow && runtimeState.workflow.currentTaskFilePath,
+      runtimeState.dirty && runtimeState.dirty.targetFile
+    );
+  }
+
+  function renderStageArtifact() {
+    const dom = getDom();
+    const artifact = isPlainObject(runtimeState.stageArtifact) ? runtimeState.stageArtifact : null;
+
+    setTextContent(dom.stageArtifactKindValue, formatDisplayText(artifact && artifact.kind, '—'));
+    setTextContent(dom.stageArtifactStageValue, formatDisplayText(artifact && artifact.stage, '—'));
+    setTextContent(dom.stageArtifactProviderValue, formatDisplayText(artifact && artifact.providerId, '—'));
+    setTextContent(dom.stageArtifactTargetFileValue, formatDisplayText(artifact && artifact.targetFile, '—'));
+
+    const valid = artifact ? artifact.valid === true : false;
+    setTextContent(dom.stageArtifactValidValue, artifact ? (valid ? 'valid' : 'invalid') : '—');
+
+    const warnings = artifact && Array.isArray(artifact.warnings) ? artifact.warnings : [];
+    setTextContent(dom.stageArtifactWarningCountValue, String(warnings.length));
+
+    const promptText = artifact && typeof artifact.prompt === 'string' ? artifact.prompt : '';
+    const packetText = artifact && typeof artifact.packet === 'string' ? artifact.packet : '';
+    setTextContent(dom.stageArtifactPromptLengthValue, String(promptText.length));
+    setTextContent(dom.stageArtifactPacketLengthValue, String(packetText.length));
+
+    const issueSummary = artifact && isPlainObject(artifact.issue)
+      ? ('#' + coerceText(artifact.issue.number) + ' ' + formatDisplayText(artifact.issue.title, '(untitled)'))
+      : '—';
+    setTextContent(dom.stageArtifactIssueValue, issueSummary);
+
+    const repoSummary = artifact && isPlainObject(artifact.repository) && artifact.repository.owner && artifact.repository.repo
+      ? artifact.repository.owner + '/' + artifact.repository.repo
+      : '—';
+    setTextContent(dom.stageArtifactRepositoryValue, repoSummary);
+
+    if (dom.stageArtifactPromptTextarea) {
+      dom.stageArtifactPromptTextarea.value = promptText;
+    }
+    if (dom.stageArtifactPacketTextarea) {
+      dom.stageArtifactPacketTextarea.value = packetText;
+    }
+  }
+
+  function renderTabContexts() {
+    const dom = getDom();
+    const listElement = dom.tabContextList;
+    const template = dom.tabContextItemTemplate;
+    if (!listElement) {
+      return;
+    }
+    clearChildren(listElement);
+    const contexts = Array.isArray(runtimeState.tabContexts) ? runtimeState.tabContexts : [];
+    for (let index = 0; index < contexts.length; index += 1) {
+      const tab = contexts[index];
+      if (!isPlainObject(tab)) {
+        continue;
+      }
+      const node = template ? cloneTemplateContent(template) : null;
+      const item = node && node.firstElementChild;
+      if (!item) {
+        continue;
+      }
+      setTextContent(item.querySelector('[data-field="provider"]'), formatDisplayText(tab.providerId || tab.provider, '—'));
+      setTextContent(item.querySelector('[data-field="tab-id"]'), '#' + coerceText(tab.tabId));
+      setTextContent(item.querySelector('[data-field="url"]'), formatDisplayText(tab.url, '—'));
+      setTextContent(item.querySelector('[data-field="last-seen"]'), formatTimestamp(tab.lastSeenAt || tab.updatedAt));
+      item.setAttribute('data-tab-id', coerceText(tab.tabId));
+      listElement.appendChild(node);
+    }
+  }
+
+  function renderEventLog() {
+    const dom = getDom();
+    const listElement = dom.eventLogList;
+    const template = dom.eventLogItemTemplate;
+    if (!listElement) {
+      return;
+    }
+    clearChildren(listElement);
+    const entries = Array.isArray(runtimeState.eventLog) ? runtimeState.eventLog : [];
+    const showDebug = runtimeState.transientPreferences && runtimeState.transientPreferences.showDebugLog === true;
+    setCheckboxValue(dom.showDebugLogCheckbox, showDebug);
+
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (!isPlainObject(entry)) {
+        continue;
+      }
+      const level = normalizeString(entry.level).toLowerCase();
+      if (!showDebug && level === 'debug') {
+        continue;
+      }
+      const node = template ? cloneTemplateContent(template) : null;
+      const item = node && node.firstElementChild;
+      if (!item) {
+        continue;
+      }
+      setTextContent(item.querySelector('[data-field="timestamp"]'), formatTimestamp(entry.at || entry.timestamp));
+      setTextContent(item.querySelector('[data-field="level"]'), formatDisplayText(level, 'info'));
+      setTextContent(item.querySelector('[data-field="type"]'), formatDisplayText(entry.type, '—'));
+      setTextContent(item.querySelector('[data-field="message"]'), formatDisplayText(entry.message, ''));
+      const detailsTarget = item.querySelector('[data-field="details"]');
+      if (detailsTarget) {
+        const detailsText = isPlainObject(entry.details) ? safeJsonStringify(entry.details, 2) : '';
+        detailsTarget.textContent = detailsText;
+      }
+      item.setAttribute('data-level', level || 'info');
+      listElement.appendChild(node);
+    }
+  }
+
+  function renderSettings() {
+    const dom = getDom();
+    const bootstrap = isPlainObject(runtimeState.bootstrap) ? runtimeState.bootstrap : null;
+    const settings = bootstrap && isPlainObject(bootstrap.settings) ? bootstrap.settings : null;
+    const repository = settings && isPlainObject(settings.repository) ? settings.repository : null;
+    const agents = settings && isPlainObject(settings.agents) ? settings.agents : null;
+    const auth = bootstrap && isPlainObject(bootstrap.githubAuth) ? bootstrap.githubAuth : null;
+
+    setTextContent(dom.githubUsernameOutput, formatDisplayText(auth && auth.username, '—'));
+    setTextContent(dom.githubLastValidatedOutput, formatTimestamp(auth && auth.lastValidatedAt));
+    if (dom.githubTokenTypeInput && !runtimeState.dirty.githubTokenType) {
+      dom.githubTokenTypeInput.value = coerceText(auth && auth.tokenType);
+    }
+
+    setInputValueIfClean(dom.repositoryOwnerInput, repository && repository.owner, runtimeState.dirty.repositoryOwner);
+    setInputValueIfClean(dom.repositoryRepoInput, repository && repository.repo, runtimeState.dirty.repositoryRepo);
+    setInputValueIfClean(dom.repositoryBaseBranchInput, repository && repository.baseBranch, runtimeState.dirty.repositoryBaseBranch);
+    setInputValueIfClean(dom.repositoryWorkingBranchPrefixInput, repository && repository.workingBranchPrefix, runtimeState.dirty.repositoryWorkingBranchPrefix);
+
+    setSelectValue(dom.repositoryIssueStateSelect, repository && repository.issueState);
+    setSelectValue(dom.repositoryIssueSortSelect, repository && repository.issueSort);
+    setSelectValue(dom.repositoryIssueDirectionSelect, repository && repository.issueDirection);
+
+    setSelectValue(dom.designerProviderSelect, agents && agents.designerProviderId);
+    setSelectValue(dom.executorProviderSelect, agents && agents.executorProviderId);
+    setSelectValue(dom.auditorProviderSelect, agents && agents.auditorProviderId);
+  }
+
+  function renderManualHub() {
+    const dom = getDom();
+    const manual = isPlainObject(runtimeState.manualHub) ? runtimeState.manualHub : null;
+
+    setSelectValue(dom.manualHubPacketTypeSelect, manual && manual.lastPacketType);
+    setSelectValue(dom.manualHubClipboardFormatSelect, manual && manual.clipboardFormat);
+
+    if (dom.manualHubPacketTextarea && !runtimeState.dirty.manualPacket) {
+      dom.manualHubPacketTextarea.value = coerceText(manual && manual.lastPacketText);
+    }
+    if (dom.manualHubResponseTextarea && !runtimeState.dirty.manualResponse) {
+      dom.manualHubResponseTextarea.value = coerceText(manual && manual.lastResponseText);
+    }
+
+    const preview = isPlainObject(runtimeState.manualResponsePreview) ? runtimeState.manualResponsePreview : null;
+    setTextContent(dom.manualHubPreviewKindValue, formatDisplayText(preview && preview.kind, '—'));
+    setTextContent(dom.manualHubPreviewValidValue, preview ? (preview.valid ? 'valid' : 'invalid') : '—');
+    const previewErrors = preview && Array.isArray(preview.errors) ? preview.errors : [];
+    setTextContent(dom.manualHubPreviewErrorsValue, previewErrors.length ? previewErrors.join('; ') : '—');
+  }
+
+  function renderActiveTab() {
+    const dom = getDom();
+    const active = runtimeState.transientPreferences && normalizeString(runtimeState.transientPreferences.activeTab) || 'dashboard';
+    const buttons = Array.isArray(dom.tabButtons) ? dom.tabButtons : [];
+    for (let index = 0; index < buttons.length; index += 1) {
+      const button = buttons[index];
+      if (!button) { continue; }
+      const tabName = normalizeString(button.getAttribute('data-tab'));
+      if (tabName === active) {
+        button.setAttribute('aria-selected', 'true');
+        button.setAttribute('data-active', 'true');
+      } else {
+        button.setAttribute('aria-selected', 'false');
+        button.removeAttribute('data-active');
+      }
+    }
+    const panels = Array.isArray(dom.tabPanels) ? dom.tabPanels : [];
+    for (let index = 0; index < panels.length; index += 1) {
+      const panel = panels[index];
+      if (!panel) { continue; }
+      const panelName = normalizeString(panel.getAttribute('data-tab'));
+      setHiddenAttribute(panel, panelName !== active);
+    }
+  }
+
+  function renderAll() {
+    try {
+      renderWorkflow();
+      renderRepository();
+      renderIssues();
+      renderStageArtifact();
+      renderTabContexts();
+      renderEventLog();
+      renderSettings();
+      renderManualHub();
+      renderActiveTab();
+    } catch (error) {
+      logger.warn('renderAll encountered an error.', normalizePopupError(error, 'renderAll failed.'));
+    }
+  }
   async function refreshBootstrap() { return null; }
   async function refreshWorkflow() { return null; }
   async function refreshEventLog() { return null; }
