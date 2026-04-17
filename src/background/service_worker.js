@@ -941,6 +941,18 @@ const MESSAGE_DISPATCH_TABLE = Object.freeze({
   [MESSAGE_TYPES.POPUP_RESET_WORKFLOW]: function handleResetWorkflow(payload) {
     return orchestrator.resetWorkflow ? orchestrator.resetWorkflow(payload) : null;
   },
+  [MESSAGE_TYPES.POPUP_BUILD_DESIGN_ARTIFACT]: function handleBuildDesignArtifact(payload) {
+    return orchestrator.buildDesignArtifact ? orchestrator.buildDesignArtifact(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_BUILD_CURRENT_ARTIFACT]: function handleBuildCurrentArtifact(payload) {
+    return orchestrator.buildCurrentStageArtifact ? orchestrator.buildCurrentStageArtifact(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_CREATE_PULL_REQUEST]: function handleCreatePullRequest(payload) {
+    return orchestrator.createPullRequest ? orchestrator.createPullRequest(payload) : null;
+  },
+  [MESSAGE_TYPES.POPUP_CLEAR_WORKFLOW_ERROR]: function handleClearWorkflowError(payload) {
+    return orchestrator.clearError ? orchestrator.clearError(payload) : null;
+  },
   [MESSAGE_TYPES.POPUP_SAVE_GITHUB_SETTINGS]: function handleSaveGithubSettings(payload) {
     if (typeof stateStore.updateGitHubAuth === 'function') {
       const cached = typeof stateStore.getCachedGitHubAuth === 'function'

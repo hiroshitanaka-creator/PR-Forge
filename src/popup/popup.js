@@ -1500,17 +1500,22 @@
 
   async function buildDesignArtifact(options) {
     const opts = isPlainObject(options) ? options : Object.create(null);
-    return advanceStage(Object.assign(Object.create(null), opts, {
-      kind: 'build_design_artifact',
-      stage: STAGE_DESIGN
-    }));
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_BUILD_DESIGN_ARTIFACT || 'POPUP/BUILD_DESIGN_ARTIFACT',
+      opts
+    );
+    applyStageArtifactResult(result);
+    return result;
   }
 
   async function buildCurrentArtifact(options) {
     const opts = isPlainObject(options) ? options : Object.create(null);
-    return advanceStage(Object.assign(Object.create(null), opts, {
-      kind: 'build_current_artifact'
-    }));
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_BUILD_CURRENT_ARTIFACT || 'POPUP/BUILD_CURRENT_ARTIFACT',
+      opts
+    );
+    applyStageArtifactResult(result);
+    return result;
   }
 
   async function resetWorkflow(options) {
@@ -1532,15 +1537,35 @@
   }
 
   async function clearWorkflowError() {
-    return advanceStage({ kind: 'clear_error' });
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_CLEAR_WORKFLOW_ERROR || 'POPUP/CLEAR_WORKFLOW_ERROR',
+      null
+    );
+    if (isPlainObject(result)) {
+      if (isPlainObject(result.workflow)) {
+        runtimeState.workflow = cloneValue(result.workflow);
+      } else {
+        runtimeState.workflow = cloneValue(result);
+      }
+    }
+    runtimeState.lastError = null;
+    return result;
   }
 
   async function createPullRequestNow(options) {
     const opts = isPlainObject(options) ? options : Object.create(null);
-    return advanceStage(Object.assign(Object.create(null), opts, {
-      kind: 'create_pull_request',
-      stage: STAGE_PR
-    }));
+    const result = await sendBackgroundMessage(
+      MESSAGE_TYPES.POPUP_CREATE_PULL_REQUEST || 'POPUP/CREATE_PULL_REQUEST',
+      opts
+    );
+    if (isPlainObject(result)) {
+      if (isPlainObject(result.workflow)) {
+        runtimeState.workflow = cloneValue(result.workflow);
+      } else if (result.stage || result.status || typeof result.pullRequestNumber !== 'undefined') {
+        runtimeState.workflow = cloneValue(result);
+      }
+    }
+    return result;
   }
 
   async function submitHumanPayload(payload) {
