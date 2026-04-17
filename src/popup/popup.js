@@ -1671,6 +1671,395 @@
 
   function previewManualResponseResult() { return cloneValue(runtimeState.manualResponsePreview); }
 
+  // --- Part F: Manual hub / tab / clipboard actions ---
+
+  function getManualHubState() {
+    if (!isPlainObject(runtimeState.manualHub)) {
+      runtimeState.manualHub = {
+        lastPacketType: '',
+        lastPacketText: '',
+        lastResponseText: '',
+        clipboardFormat: 'json'
+      };
+    }
+    return runtimeState.manualHub;
+  }
+
+  function updateManualPacketText(text) {
+    const manual = getManualHubState();
+    manual.lastPacketText = coerceText(text);
+    runtimeState.dirty.manualPacket = true;
+  }
+
+  function updateManualResponseText(text) {
+    const manual = getManualHubState();
+    manual.lastResponseText = coerceText(text);
+    runtimeState.dirty.manualResponse = true;
+  }
+
+  function updateManualPacketType(packetType) {
+    const manual = getManualHubState();
+    manual.lastPacketType = normalizeString(packetType);
+  }
+
+  function updateManualClipboardFormat(format) {
+    const manual = getManualHubState();
+    manual.clipboardFormat = normalizeString(format).toLowerCase() || 'json';
+  }
+
+  async function persistManualHubState() {
+    const manual = getManualHubState();
+    if (typeof storage.merge !== 'function') {
+      return null;
+    }
+    try {
+      return await storage.merge(STORAGE_KEYS.MANUAL_BRIDGE_DRAFT || 'manualBridgeDraft', cloneValue(manual), {
+        area: STORAGE_AREA_LOCAL
+      });
+    } catch (error) {
+      logger.warn('Failed to persist manual hub state.', normalizePopupError(error, 'persistManualHubState failed.'));
+      return null;
+    }
+  }
+
+  function buildCurrentManualPacket() {
+    const artifact = isPlainObject(runtimeState.stageArtifact) ? runtimeState.stageArtifact : null;
+    if (!artifact || typeof artifact.packet !== 'string' || !artifact.packet) {
+      throw normalizePopupError({
+        code: ERROR_CODES.INVALID_STATE || 'INVALID_STATE',
+        message: 'No stage artifact packet is available to transfer.'
+      }, 'No packet available.');
+    }
+    const manual = getManualHubState();
+    manual.lastPacketText = artifact.packet;
+    manual.lastPacketType = normalizeString(artifact.packetType) || manual.lastPacketType;
+    runtimeState.dirty.manualPacket = false;
+    return cloneValue(manual);
+  }
+
+  async function writeToClipboard(text) {
+    const value = coerceText(text);
+    if (!value) {
+      return false;
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(value);
+        return true;
+      } catch (error) {
+        logger.warn('navigator.clipboard.writeText failed.', normalizePopupError(error, 'clipboard write failed.'));
+      }
+    }
+    try {
+      if (typeof document !== 'undefined' && document.body) {
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.setAttribute('readonly', 'readonly');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand && document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return copied === true;
+      }
+    } catch (error) {
+      logger.warn('Fallback clipboard copy failed.', normalizePopupError(error, 'clipboard write failed.'));
+    }
+    return false;
+  }
+
+  async function copyManualPacket() {
+    const manual = getManualHubState();
+    const ok = await writeToClipboard(manual.lastPacketText);
+    if (ok) {
+      announce('Packet copied to clipboard.');
+    }
+    return ok;
+  }
+
+  async function copyStageArtifactPrompt() {
+    const artifact = isPlainObject(runtimeState.stageArtifact) ? runtimeState.stageArtifact : null;
+    const text = artifact && typeof artifact.prompt === 'string' ? artifact.prompt : '';
+    const ok = await writeToClipboard(text);
+    if (ok) {
+      announce('Prompt copied to clipboard.');
+    }
+    return ok;
+  }
+
+  async function copyStageArtifactPacket() {
+    const artifact = isPlainObject(runtimeState.stageArtifact) ? runtimeState.stageArtifact : null;
+    const text = artifact && typeof artifact.packet === 'string' ? artifact.packet : '';
+    const ok = await writeToClipboard(text);
+    if (ok) {
+      announce('Packet copied to clipboard.');
+    }
+    return ok;
+  }
+
+  async function copyStageArtifactBoth() {
+    const artifact = isPlainObject(runtimeState.stageArtifact) ? runtimeState.stageArtifact : null;
+    const prompt = artifact && typeof artifact.prompt === 'string' ? artifact.prompt : '';
+    const packet = artifact && typeof artifact.packet === 'string' ? artifact.packet : '';
+    const combined = [prompt, packet].filter(Boolean).join('\n\n');
+    const ok = await writeToClipboard(combined);
+    if (ok) {
+      announce('Prompt and packet copied to clipboard.');
+    }
+    return ok;
+  }
+
+  function validateManualPacket() {
+    const manual = getManualHubState();
+    const text = coerceText(manual.lastPacketText);
+    if (!text) {
+      runtimeState.manualResponsePreview = {
+        kind: 'packet',
+        valid: false,
+        errors: ['Packet text is empty.']
+      };
+      return runtimeState.manualResponsePreview;
+    }
+    if (!payloadParser || typeof payloadParser.parsePacketPayload !== 'function') {
+      runtimeState.manualResponsePreview = {
+        kind: 'packet',
+        valid: false,
+        errors: ['ai_payload_parser.parsePacketPayload is not available.']
+      };
+      return runtimeState.manualResponsePreview;
+    }
+    try {
+      const parsed = payloadParser.parsePacketPayload(text);
+      runtimeState.manualResponsePreview = {
+        kind: 'packet',
+        valid: parsed && parsed.ok === true,
+        errors: parsed && Array.isArray(parsed.errors) ? parsed.errors : [],
+        warnings: parsed && Array.isArray(parsed.warnings) ? parsed.warnings : [],
+        parsed: parsed && isPlainObject(parsed.payload) ? cloneValue(parsed.payload) : null
+      };
+    } catch (error) {
+      runtimeState.manualResponsePreview = {
+        kind: 'packet',
+        valid: false,
+        errors: [normalizePopupError(error, 'Packet validation failed.').message]
+      };
+    }
+    return cloneValue(runtimeState.manualResponsePreview);
+  }
+
+  function previewManualResponse() {
+    const manual = getManualHubState();
+    const text = coerceText(manual.lastResponseText);
+    if (!text) {
+      runtimeState.manualResponsePreview = {
+        kind: 'response',
+        valid: false,
+        errors: ['Response text is empty.']
+      };
+      return runtimeState.manualResponsePreview;
+    }
+    if (!payloadParser) {
+      runtimeState.manualResponsePreview = {
+        kind: 'response',
+        valid: false,
+        errors: ['ai_payload_parser is not available.']
+      };
+      return runtimeState.manualResponsePreview;
+    }
+    try {
+      const packetAttempt = typeof payloadParser.parsePacketPayload === 'function'
+        ? payloadParser.parsePacketPayload(text)
+        : null;
+      if (packetAttempt && packetAttempt.ok) {
+        runtimeState.manualResponsePreview = {
+          kind: 'packet',
+          valid: true,
+          errors: [],
+          parsed: cloneValue(packetAttempt.payload)
+        };
+        return cloneValue(runtimeState.manualResponsePreview);
+      }
+      const executorAttempt = typeof payloadParser.parseExecutorOutput === 'function'
+        ? payloadParser.parseExecutorOutput(text)
+        : null;
+      if (executorAttempt && executorAttempt.ok) {
+        runtimeState.manualResponsePreview = {
+          kind: 'executor_output',
+          valid: true,
+          errors: [],
+          parsed: cloneValue(executorAttempt.payload)
+        };
+        return cloneValue(runtimeState.manualResponsePreview);
+      }
+      const reviewAttempt = typeof payloadParser.parseReviewOutput === 'function'
+        ? payloadParser.parseReviewOutput(text)
+        : null;
+      if (reviewAttempt && reviewAttempt.ok) {
+        runtimeState.manualResponsePreview = {
+          kind: 'review_output',
+          valid: true,
+          errors: [],
+          parsed: cloneValue(reviewAttempt.payload)
+        };
+        return cloneValue(runtimeState.manualResponsePreview);
+      }
+      const errors = [];
+      if (packetAttempt && Array.isArray(packetAttempt.errors)) errors.push.apply(errors, packetAttempt.errors);
+      if (executorAttempt && Array.isArray(executorAttempt.errors)) errors.push.apply(errors, executorAttempt.errors);
+      if (reviewAttempt && Array.isArray(reviewAttempt.errors)) errors.push.apply(errors, reviewAttempt.errors);
+      runtimeState.manualResponsePreview = {
+        kind: 'unknown',
+        valid: false,
+        errors: errors.length ? errors : ['Unable to classify response text.']
+      };
+    } catch (error) {
+      runtimeState.manualResponsePreview = {
+        kind: 'unknown',
+        valid: false,
+        errors: [normalizePopupError(error, 'Response preview failed.').message]
+      };
+    }
+    return cloneValue(runtimeState.manualResponsePreview);
+  }
+
+  async function submitManualResponse(options) {
+    const opts = isPlainObject(options) ? options : Object.create(null);
+    const manual = getManualHubState();
+    const preview = previewManualResponse();
+    if (!preview || preview.valid !== true) {
+      throw normalizePopupError({
+        code: ERROR_CODES.VALIDATION_FAILED || 'VALIDATION_FAILED',
+        message: 'Manual response is invalid. Preview before submitting.',
+        details: { errors: preview && preview.errors }
+      }, 'Invalid manual response.');
+    }
+    const payload = Object.assign(Object.create(null), opts, {
+      rawText: manual.lastResponseText,
+      kind: preview.kind,
+      parsed: preview.parsed || null
+    });
+    const result = await submitHumanPayload(payload);
+    runtimeState.dirty.manualResponse = false;
+    return result;
+  }
+
+  function applyManualStageState(nextState) {
+    if (!isPlainObject(nextState)) {
+      return;
+    }
+    const manual = getManualHubState();
+    if (typeof nextState.lastPacketText === 'string') {
+      manual.lastPacketText = nextState.lastPacketText;
+    }
+    if (typeof nextState.lastResponseText === 'string') {
+      manual.lastResponseText = nextState.lastResponseText;
+    }
+    if (typeof nextState.lastPacketType === 'string') {
+      manual.lastPacketType = nextState.lastPacketType;
+    }
+    if (typeof nextState.clipboardFormat === 'string') {
+      manual.clipboardFormat = nextState.clipboardFormat;
+    }
+  }
+
+  function markCurrentStageStatus(status) {
+    const workflow = isPlainObject(runtimeState.workflow) ? runtimeState.workflow : null;
+    if (!workflow) {
+      return;
+    }
+    workflow.status = normalizeString(status);
+  }
+
+  function refreshTabContexts() {
+    const bootstrap = isPlainObject(runtimeState.bootstrap) ? runtimeState.bootstrap : null;
+    const contexts = bootstrap && Array.isArray(bootstrap.tabContexts) ? bootstrap.tabContexts : [];
+    runtimeState.tabContexts = cloneValue(contexts);
+    return runtimeState.tabContexts;
+  }
+
+  async function queryActiveTab() {
+    const tabs = resolveChromeTabs();
+    if (!tabs || typeof tabs.query !== 'function') {
+      return null;
+    }
+    return new Promise(function executor(resolve) {
+      try {
+        tabs.query({ active: true, lastFocusedWindow: true }, function onTabs(list) {
+          if (Array.isArray(list) && list.length > 0) {
+            resolve(list[0]);
+          } else {
+            resolve(null);
+          }
+        });
+      } catch (error) {
+        logger.warn('chrome.tabs.query failed.', normalizePopupError(error, 'tabs.query failed.'));
+        resolve(null);
+      }
+    });
+  }
+
+  async function probeActiveTab() {
+    const tab = await queryActiveTab();
+    if (!tab || typeof tab.id !== 'number') {
+      throw normalizePopupError({
+        code: ERROR_CODES.TAB_NOT_FOUND || 'TAB_NOT_FOUND',
+        message: 'No active tab detected.'
+      }, 'No active tab.');
+    }
+    return sendTabMessage(
+      tab.id,
+      MESSAGE_TYPES.CONTENT_PROBE || 'CONTENT/PROBE',
+      { url: tab.url || '' }
+    );
+  }
+
+  async function sendPromptToActiveTab(promptText) {
+    const tab = await queryActiveTab();
+    if (!tab || typeof tab.id !== 'number') {
+      throw normalizePopupError({
+        code: ERROR_CODES.TAB_NOT_FOUND || 'TAB_NOT_FOUND',
+        message: 'No active tab detected.'
+      }, 'No active tab.');
+    }
+    const artifact = isPlainObject(runtimeState.stageArtifact) ? runtimeState.stageArtifact : null;
+    const text = coerceText(promptText)
+      || (artifact && typeof artifact.prompt === 'string' ? artifact.prompt : '')
+      || '';
+    if (!text) {
+      throw normalizePopupError({
+        code: ERROR_CODES.INVALID_STATE || 'INVALID_STATE',
+        message: 'No prompt text is available to send.'
+      }, 'No prompt available.');
+    }
+    return sendTabMessage(
+      tab.id,
+      MESSAGE_TYPES.CONTENT_FILL_PROMPT || 'CONTENT/FILL_PROMPT',
+      { prompt: text }
+    );
+  }
+
+  async function extractLatestResponse() {
+    const tab = await queryActiveTab();
+    if (!tab || typeof tab.id !== 'number') {
+      throw normalizePopupError({
+        code: ERROR_CODES.TAB_NOT_FOUND || 'TAB_NOT_FOUND',
+        message: 'No active tab detected.'
+      }, 'No active tab.');
+    }
+    const result = await sendTabMessage(
+      tab.id,
+      MESSAGE_TYPES.CONTENT_EXTRACT_LATEST_RESPONSE || 'CONTENT/EXTRACT_LATEST_RESPONSE',
+      null
+    );
+    if (isPlainObject(result) && typeof result.rawText === 'string') {
+      const manual = getManualHubState();
+      manual.lastResponseText = result.rawText;
+      runtimeState.dirty.manualResponse = false;
+    }
+    return result;
+  }
+
   const popupApi = deepFreeze({
     initialize: async function initialize() { return runtimeState; },
     refreshBootstrap: refreshBootstrap,
